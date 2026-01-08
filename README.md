@@ -57,9 +57,9 @@ This repo contains:
 * **OS:** TrueNAS SCALE
 ---
 
-## 🗂️ Services — summary
+## 🗂️ Services - summary
 
-Below is a short, high-level summary of the **types of services** I host on the TrueNAS homelab. I kept it focused and recruiter-friendly — no credentials or sensitive details are included here.
+Below is a short, high-level summary of the **types of services** I host on the TrueNAS homelab. I kept it focused and recruiter-friendly - no credentials or sensitive details are included here.
 
 **Core / Infrastructure**
 
