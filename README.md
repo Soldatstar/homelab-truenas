@@ -57,7 +57,7 @@ This repo contains:
 * **OS:** TrueNAS SCALE
 ---
 
-## 🗂️ Services - summary
+## Services - summary
 
 **Core / Infrastructure**
 
