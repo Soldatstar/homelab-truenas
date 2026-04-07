@@ -10,7 +10,7 @@ It’s part of my homelab and also a way to **showcase my approach to storage ma
 
 ---
 
-## 🌐 Overview
+##  Overview
 
 I run a self-hosted **TrueNAS server** that handles:
 
@@ -25,7 +25,7 @@ This repo contains:
 
 ---
 
-## 🖥️ Server Specs
+##  Server Specs
 
 * **CPU:** AMD Ryzen 7 1700 (8 cores / 16 threads)
 * **GPU:** NVIDIA Quadro P2000 (hardware-accelerated media transcoding)
@@ -58,8 +58,6 @@ This repo contains:
 ---
 
 ## 🗂️ Services - summary
-
-Below is a short, high-level summary of the **types of services** I host on the TrueNAS homelab. I kept it focused and recruiter-friendly - no credentials or sensitive details are included here.
 
 **Core / Infrastructure**
 
@@ -106,7 +104,7 @@ Below is a short, high-level summary of the **types of services** I host on the 
 
 ---
 
-## 🔄 Backup & Sync
+##  Backup & Sync
 
 Backups are done using `rsync` over SSH to multiple remote StorageBoxex.
 
@@ -116,14 +114,14 @@ Backups are done using `rsync` over SSH to multiple remote StorageBoxex.
 
 ---
 
-## ✅ Monitoring
+##  Monitoring
 
 This project uses [Healthchecks.io](https://healthchecks.io) to monitor backup jobs and critical services.
 If a job doesn’t run or fails, I get notified.
 
 ---
 
-## 📚 Why this Repo?
+##  Why this Repo?
 
 * To keep **clear documentation** of my setup for myself
 * To **demonstrate infrastructure & monitoring skills** on my CV
@@ -131,17 +129,7 @@ If a job doesn’t run or fails, I get notified.
 
 ---
 
-## 🚀 Skills Demonstrated
-
-* Linux server administration
-* TrueNAS configuration & storage management
-* Backup automation with `rsync`
-* Monitoring & alerting integration
-* Writing clean documentation
-
----
-
-## 📌 Next Steps
+##  Next Steps
 
 * Add screenshots of TrueNAS dashboards
 * Expand Monitoring/Logging/Alerting
