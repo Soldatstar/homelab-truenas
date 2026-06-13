@@ -1,0 +1,29 @@
+---
+- name: Install K3s server
+  hosts: k3s_servers
+  become: true
+  tasks:
+    - name: Install K3s server
+      ansible.builtin.shell: "curl -sfL https://get.k3s.io | sh -s - server --cluster-init --tls-san={{ ansible_host }}"
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
+
+    - name: Get K3s server token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: server_token
+
+    - name: Store K3s server token
+      ansible.builtin.set_fact:
+        k3s_token: "{{ server_token.content | b64decode | trim }}"
+      delegate_to: localhost
+      delegate_facts: true
+
+- name: Install K3s agents
+  hosts: k3s_agents
+  become: true
+  tasks:
+    - name: Install K3s agents
+      ansible.builtin.shell: "curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars['k3s-server-01'].ansible_host }}:6443 K3S_TOKEN={{ hostvars['localhost']['k3s_token'] }} sh -"
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml

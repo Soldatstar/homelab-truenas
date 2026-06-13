@@ -9,7 +9,7 @@ resource "proxmox_download_file" "debian12_cloud_image" {
 
   url       = "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
   file_name = "debian-13-generic-amd64.img"
-
+  overwrite = false
   checksum_algorithm = "sha512"
   checksum           = var.debian12_checksum_sha512
 }

@@ -1,0 +1,21 @@
+---
+all:
+  hosts:
+    k3s-server-01:
+      ansible_host: 192.168.1.28
+    k3s-agent-01:
+      ansible_host: 192.168.1.29
+    k3s-agent-02:
+      ansible_host: 192.168.1.30
+  children:
+    k3s_servers:
+      hosts:
+        k3s-server-01:
+    k3s_agents:
+      hosts:
+        k3s-agent-01:
+        k3s-agent-02:
+  vars:
+    ansible_user: k3sadmin
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

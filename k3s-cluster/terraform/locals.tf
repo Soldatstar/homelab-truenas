@@ -5,7 +5,7 @@ locals {
       node_name = var.proxmox_nodes[0]
       vm_id     = var.vm_id_start
       role      = "server"
-      cores     = 4
+      cores     = 5
       memory    = 10240 # 10 GB
       disk_size = 80    # GB
       ip        = "${var.network_prefix}.28"
