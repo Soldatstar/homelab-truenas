@@ -9,7 +9,7 @@ resource "proxmox_virtual_environment_vm" "k3s" {
   description = "K3s ${each.value.role} node – managed by Terraform"
   tags        = ["k3s", each.value.role, "terraform"]
 
-  # Clone from the Debian 12 template.
+  # Clone from the debian 13 template.
   clone {
     vm_id     = proxmox_virtual_environment_vm.k3s_template.vm_id
     full      = true

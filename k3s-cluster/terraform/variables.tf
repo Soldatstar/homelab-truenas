@@ -46,8 +46,8 @@ variable "snippets_datastore" {
 }
 
 # --- Cloud Image ---
-variable "debian12_checksum_sha512" {
-  description = "SHA-512 checksum for the Debian 12 cloud image (set to empty string to skip)"
+variable "debian13_checksum_sha512" {
+  description = "SHA-512 checksum for the debian 13 cloud image (set to empty string to skip)"
   type        = string
   default     = ""
 }

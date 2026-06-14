@@ -1,0 +1,14 @@
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - open-iscsi
+    state: present
+    update_cache: true
+
+- name: Enable iscsid
+  service:
+    name: iscsid
+    enabled: true
+    state: started
+    

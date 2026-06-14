@@ -1,11 +1,11 @@
-# Creates a reusable VM template with a base Debian 12 cloud-init image.
+# Creates a reusable VM template with a base debian 13 cloud-init image.
 # This template is used to quickly clone new VMs for the K3s cluster.
 resource "proxmox_virtual_environment_vm" "k3s_template" {
   name      = "debian-12-k3s-template"
   node_name = var.proxmox_nodes[0] # Create template on the first node
   vm_id     = var.vm_id_start - 1  # Assign a unique ID before the node IDs
 
-  description = "Debian 12 Cloud-Init Template for K3s – managed by Terraform"
+  description = "debian 13 Cloud-Init Template for K3s – managed by Terraform"
   tags        = ["template", "terraform"]
 
   template = true
@@ -26,7 +26,7 @@ resource "proxmox_virtual_environment_vm" "k3s_template" {
   # It will be resized when a VM is cloned from this template.
   disk {
     datastore_id = var.vm_datastore
-    file_id      = proxmox_download_file.debian12_cloud_image[var.proxmox_nodes[0]].id
+    file_id      = "${var.iso_datastore}:iso/debian-13-generic-amd64.img"
     interface    = "scsi0"
     size         = 10 # Small base size, will be resized on clone
     discard      = "on"

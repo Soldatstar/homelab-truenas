@@ -1,15 +1,15 @@
-# Download the Debian 12 cloud image to each Proxmox node's local storage.
-# This ensures the image is available on the node where the VM will be created.
-resource "proxmox_download_file" "debian12_cloud_image" {
+# This resource represents the local Debian 13 cloud image.
+# It assumes the file already exists on each Proxmox node at the specified path.
+# This is used to create a dependency for other resources that need the image.
+resource "null_resource" "debian13_cloud_image" {
   for_each = toset(var.proxmox_nodes)
 
-  content_type = "iso"
-  datastore_id = var.iso_datastore
-  node_name    = each.value
+  triggers = {
+    # This is a logical name for the image. The actual path is on the Proxmox node.
+    file_path = "/var/lib/vz/template/iso/debian-13-generic-amd64.img"
+  }
 
-  url       = "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
-  file_name = "debian-13-generic-amd64.img"
-  overwrite = false
-  checksum_algorithm = "sha512"
-  checksum           = var.debian12_checksum_sha512
+  lifecycle {
+    prevent_destroy = true
+  }
 }
