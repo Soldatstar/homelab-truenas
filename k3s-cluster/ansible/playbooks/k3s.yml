@@ -4,15 +4,27 @@
   roles:
     - node_prep
 
+- name: Deploy kube-vip manifests on first server
+  hosts: k3s_servers
+  become: true
+  run_once: true
+  roles:
+    - kube_vip
+
 - name: Install K3s server
   hosts: k3s_servers
   become: true
   roles:
     - k3s_server
 
-- name: Install K3s agents
-  hosts: k3s_agents
+- name: Wait for kube-vip VIP to be ready
+  hosts: k3s_servers
   become: true
-  roles:
-    - k3s_agent
-    
+  run_once: true
+  tasks:
+    - name: Wait for kube-vip to accept connections on VIP
+      wait_for:
+        host: "192.168.1.32"
+        port: 6443
+        delay: 10
+        timeout: 300

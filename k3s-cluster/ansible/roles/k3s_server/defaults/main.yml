@@ -1,0 +1,4 @@
+---
+# kube-vip configuration - used for --tls-san flag
+kube_vip_address: "192.168.1.32"
+kube_vip_interface: "eth0"

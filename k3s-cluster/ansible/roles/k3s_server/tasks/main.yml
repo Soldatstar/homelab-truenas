@@ -1,17 +1,58 @@
-- name: Install K3s server
+- name: Install first k3s server with cluster-init
   shell: |
     curl -sfL https://get.k3s.io | sh -s - server \
+      --cluster-init \
       --write-kubeconfig-mode 644 \
-      --tls-san={{ ansible_host }}
+      --tls-san={{ kube_vip_address }}
   args:
     creates: /etc/rancher/k3s/k3s.yaml
+  when: inventory_hostname == groups['k3s_servers'][0]
 
-- name: Read node token
+- name: Read node token from first server
   slurp:
     src: /var/lib/rancher/k3s/server/node-token
   register: token
+  when: inventory_hostname == groups['k3s_servers'][0]
 
-- name: Set token fact
+- name: Set cluster token fact on first server
   set_fact:
     k3s_token: "{{ token.content | b64decode | trim }}"
-    
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Wait for k3s API server on first node
+  wait_for:
+    host: "{{ hostvars[groups['k3s_servers'][0]].ansible_host }}"
+    port: 6443
+    delay: 10
+    timeout: 300
+  when: inventory_hostname != groups['k3s_servers'][0]
+
+- name: Join additional servers to cluster
+  shell: |
+    curl -sfL https://get.k3s.io | \
+    K3S_TOKEN={{ hostvars[groups['k3s_servers'][0]].k3s_token }} \
+    sh -s - server \
+      --server https://{{ kube_vip_address }}:6443 \
+      --write-kubeconfig-mode 644 \
+      --tls-san={{ kube_vip_address }}
+  args:
+    creates: /etc/rancher/k3s/k3s.yaml
+  when: inventory_hostname != groups['k3s_servers'][0]
+
+- name: Wait for kubeconfig to be created
+  wait_for:
+    path: /etc/rancher/k3s/k3s.yaml
+    state: present
+    timeout: 60
+
+- name: Rewrite kubeconfig to use VIP instead of localhost
+  shell: |
+    sed -i 's/server: https:\/\/127\.0\.0\.1:6443/server: https:\/\/{{ kube_vip_address }}:6443/g' /etc/rancher/k3s/k3s.yaml
+  when: inventory_hostname in groups['k3s_servers']
+
+- name: Verify kubeconfig has VIP
+  shell: |
+    grep "server: https://{{ kube_vip_address }}:6443" /etc/rancher/k3s/k3s.yaml
+  register: kubeconfig_vip_check
+  when: inventory_hostname in groups['k3s_servers']
+  failed_when: kubeconfig_vip_check.rc != 0

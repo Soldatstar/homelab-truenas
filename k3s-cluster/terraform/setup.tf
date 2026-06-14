@@ -9,7 +9,4 @@ resource "null_resource" "debian13_cloud_image" {
     file_path = "/var/lib/vz/template/iso/debian-13-generic-amd64.img"
   }
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }

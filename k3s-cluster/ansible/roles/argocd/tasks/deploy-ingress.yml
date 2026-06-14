@@ -1,0 +1,4 @@
+- name: Deploy ingress
+  kubernetes.core.k8s:
+    state: present
+    src: ingress.yml

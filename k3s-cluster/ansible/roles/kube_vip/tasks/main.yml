@@ -1,0 +1,24 @@
+---
+- name: Create manifests directory
+  file:
+    path: /var/lib/rancher/k3s/server/manifests
+    state: directory
+    mode: '0755'
+  become: yes
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Download kube-vip RBAC manifest
+  shell: |
+    curl https://kube-vip.io/manifests/rbac.yaml > /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+  become: yes
+  when: inventory_hostname == groups['k3s_servers'][0]
+  register: rbac_download
+
+- name: Deploy kube-vip DaemonSet manifest
+  template:
+    src: kube-vip-daemonset.j2
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip-daemonset.yaml
+    mode: '0644'
+  become: yes
+  when: inventory_hostname == groups['k3s_servers'][0]
+  register: kube_vip_manifest

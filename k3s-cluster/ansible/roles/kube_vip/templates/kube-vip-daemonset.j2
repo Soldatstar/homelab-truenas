@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-vip
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: kube-vip
+  template:
+    metadata:
+      labels:
+        app: kube-vip
+    spec:
+      serviceAccountName: kube-vip
+      hostNetwork: true
+      hostAliases:
+        - ip: 127.0.0.1
+          hostnames:
+            - kubernetes
+      containers:
+        - name: kube-vip
+          image: ghcr.io/kube-vip/kube-vip:v0.8.0
+          args:
+            - manager
+          env:
+            - name: vip_arp
+              value: "true"
+            - name: vip_interface
+              value: "{{ kube_vip_interface }}"
+            - name: vip_address
+              value: "{{ kube_vip_address }}"
+            - name: vip_leaderelection
+              value: "true"
+            - name: vip_leaseduration
+              value: "15"
+            - name: vip_renewdeadline
+              value: "10"
+            - name: vip_retryperiod
+              value: "2"
+            - name: cp_enable
+              value: "true"
+            - name: cp_port
+              value: "6443"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - SYS_TIME
+          volumeMounts:
+            - mountPath: /etc/kubernetes/admin.conf
+              name: kubeconfig
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: /etc/rancher/k3s/k3s.yaml
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: system-node-critical

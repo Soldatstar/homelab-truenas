@@ -6,11 +6,11 @@ locals {
       vm_id     = var.vm_id_start
       role      = "server"
       cores     = 5
-      memory    = 10240 # 10 GB
-      disk_size = 80    # GB
+      memory    = 12288 # 12 GB
+      disk_size = 100    # GB
       ip        = "${var.network_prefix}.28"
     }
-    "k3s-agent-01" = {
+    "k3s-server-02" = {
       node_name = var.proxmox_nodes[1]
       vm_id     = var.vm_id_start + 1
       role      = "agent"
@@ -19,7 +19,7 @@ locals {
       disk_size = 100   # GB
       ip        = "${var.network_prefix}.29"
     }
-    "k3s-agent-02" = {
+    "k3s-server-03" = {
       node_name = var.proxmox_nodes[2]
       vm_id     = var.vm_id_start + 2
       role      = "agent"
