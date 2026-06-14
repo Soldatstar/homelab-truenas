@@ -20,3 +20,16 @@
     values:
       installCRDs: true
   when: cert_manager_info.failed or cert_manager_info.status is not defined
+
+- name: Deploy selfsigned root issuer
+  kubernetes.core.k8s:
+    definition: "{{ lookup('file', role_path + '/files/selfsigned-issuer.yml') }}"
+
+- name: Create internal CA certificate
+  kubernetes.core.k8s:
+    definition: "{{ lookup('file', role_path + '/files/root-ca.yml') }}"
+
+- name: Create internal CA issuer
+  kubernetes.core.k8s:
+    definition: "{{ lookup('file', role_path + '/files/internal-ca-issuer.yml') }}"
+    

@@ -1,0 +1,12 @@
+---
+
+
+- name: Deploy Longhorn ingress
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'longhorn-ingress.yml.j2') }}"
+
+- name: Deploy ArgoCD ingress
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'argocd-ingress.yml.j2') }}"

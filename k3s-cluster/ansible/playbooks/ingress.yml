@@ -1,0 +1,11 @@
+- name: Configure Traefik Ingress Routes
+  hosts: k3s_servers
+  become: true
+  run_once: true
+
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+  roles:
+    - traefik_ingress
+    
