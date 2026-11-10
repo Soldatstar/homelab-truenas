@@ -72,6 +72,10 @@ host must be usable from WSL: copy it into `~/.ssh` there, or install the WSL ke
 
 ```bash
 cd llm-server/ansible
+# Required when the repo sits on a Windows drive (/mnt/c/...): Ansible ignores
+# ansible.cfg in world-writable directories, and without it no inventory is found.
+# Cloning into the Linux home directory avoids this.
+export ANSIBLE_CONFIG=$PWD/ansible.cfg
 ansible-galaxy collection install -r requirements.yml
 
 # Secrets
