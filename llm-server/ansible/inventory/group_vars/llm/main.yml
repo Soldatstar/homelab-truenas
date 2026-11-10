@@ -163,8 +163,16 @@ openwebui_trusted_name_header: ""
 litellm_enabled: false
 litellm_port: 4000
 
-# Prometheus: vLLM /metrics is always served on the API port; this adds
-# node-exporter with AMD GPU sysfs metrics and opens the firewall for scrapers.
-llm_metrics_enabled: false
+# Dashboard: Prometheus + Grafana on this host, with a ready-made dashboard (tokens/s,
+# requests, KV cache, latency, GPU temperature/fan/VRAM). Store the Grafana admin password
+# as vault_grafana_admin_password, then set this to true. Grafana: http://<llm_lan_ip>:3001
+llm_dashboard_enabled: false
+llm_grafana_port: 3001
+llm_prometheus_retention: 30d
+
+# node-exporter with AMD GPU sysfs metrics. Implied by the dashboard; enable it on its
+# own only to scrape from a Prometheus server elsewhere (vLLM /metrics is always served
+# on the API port).
+llm_metrics_enabled: "{{ llm_dashboard_enabled }}"
 llm_metrics_port: 9100
-llm_metrics_sources: [] # Prometheus server IPs
+llm_metrics_sources: [] # external Prometheus server IPs

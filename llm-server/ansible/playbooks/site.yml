@@ -50,4 +50,7 @@
       tags: [litellm]
       when: litellm_enabled
     - role: llm_monitoring
-      tags: [monitoring]
+      tags: [monitoring, dashboard]
+    - role: llm_dashboard
+      tags: [dashboard]
+      when: llm_dashboard_enabled

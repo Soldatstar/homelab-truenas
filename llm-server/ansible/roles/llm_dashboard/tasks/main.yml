@@ -1,0 +1,95 @@
+---
+- name: Assert the Grafana admin password is in the vault
+  ansible.builtin.assert:
+    that: vault_grafana_admin_password is defined and vault_grafana_admin_password | length > 0
+    fail_msg: >-
+      llm_dashboard_enabled is true but vault_grafana_admin_password is missing.
+      Add it with: ansible-vault edit inventory/group_vars/llm/vault.yml
+    quiet: true
+
+- name: Create dashboard directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "0755"
+  loop:
+    - path: "{{ llm_base_dir }}/dashboard"
+    - path: "{{ llm_base_dir }}/dashboard/grafana-provisioning"
+    - path: "{{ llm_base_dir }}/dashboard/grafana-provisioning/datasources"
+    - path: "{{ llm_base_dir }}/dashboard/grafana-provisioning/dashboards"
+    - path: "{{ llm_base_dir }}/dashboard/grafana-dashboards"
+    - path: "{{ llm_data_dir }}/prometheus"
+      owner: "65534" # nobody, the user inside the prometheus image
+      group: "65534"
+    - path: "{{ llm_data_dir }}/grafana"
+      owner: "472" # grafana user inside the image
+      group: "0"
+
+- name: Write the Grafana secrets file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/dashboard/grafana.env"
+    content: |
+      GF_SECURITY_ADMIN_USER=admin
+      GF_SECURITY_ADMIN_PASSWORD={{ vault_grafana_admin_password }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Template the Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ llm_base_dir }}/dashboard/prometheus.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart prometheus
+
+- name: Template the Grafana provisioning files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ llm_base_dir }}/dashboard/grafana-provisioning/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: datasource.yml.j2
+      dest: datasources/prometheus.yml
+    - src: dashboard-provider.yml.j2
+      dest: dashboards/llm.yml
+  notify: Restart grafana
+
+- name: Install the LLM dashboard
+  ansible.builtin.copy:
+    src: llm-dashboard.json
+    dest: "{{ llm_base_dir }}/dashboard/grafana-dashboards/llm.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Template the dashboard compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/dashboard/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start Prometheus and Grafana
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/dashboard"
+    state: present
+    pull: missing
+    remove_orphans: true
+
+- name: Wait for Grafana
+  when: not ansible_check_mode
+  ansible.builtin.uri:
+    url: "http://{{ llm_lan_ip }}:{{ llm_grafana_port }}/api/health"
+    status_code: 200
+  register: llm_dashboard_health
+  until: llm_dashboard_health.status == 200
+  retries: 30
+  delay: 5

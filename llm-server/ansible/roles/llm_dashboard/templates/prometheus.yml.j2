@@ -1,0 +1,16 @@
+# Managed by Ansible (llm_dashboard).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # The active inference engine, reached by its network alias. /metrics needs no API key.
+  - job_name: llm-engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["{{ llm_backend_alias }}:8000"]
+
+  # GPU temperature, fan, power and VRAM (from llm-gpu-stats) plus host metrics.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]

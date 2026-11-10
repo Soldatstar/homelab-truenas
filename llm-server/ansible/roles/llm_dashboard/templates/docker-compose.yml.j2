@@ -1,0 +1,46 @@
+# Managed by Ansible (llm_dashboard). Do not edit on the host.
+name: llm-dashboard
+services:
+  prometheus:
+    image: "{{ prometheus_image }}"
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time={{ llm_prometheus_retention }}
+    # Not published: only Grafana (same Docker network) talks to it.
+    volumes:
+      - "{{ llm_base_dir }}/dashboard/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "{{ llm_data_dir }}/prometheus:/prometheus"
+    networks:
+      - llm
+
+  grafana:
+    image: "{{ grafana_image }}"
+    container_name: grafana
+    restart: unless-stopped
+    env_file:
+      - grafana.env
+    environment:
+      GF_SERVER_ROOT_URL: "http://{{ llm_lan_ip }}:{{ llm_grafana_port }}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/llm.json
+    depends_on:
+      - prometheus
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_grafana_port }}:3000"
+    volumes:
+      - "{{ llm_data_dir }}/grafana:/var/lib/grafana"
+      - "{{ llm_base_dir }}/dashboard/grafana-provisioning:/etc/grafana/provisioning:ro"
+      - "{{ llm_base_dir }}/dashboard/grafana-dashboards:/etc/grafana/dashboards:ro"
+    networks:
+      - llm
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"

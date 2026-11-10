@@ -31,6 +31,12 @@ litellm_image: "ghcr.io/berriai/litellm@sha256:c560d317136880ea92d62334d4367ab10
 # docker.io/prom/node-exporter:v1.12.1
 node_exporter_image: "docker.io/prom/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0"
 
+# docker.io/prom/prometheus:v3.16.0
+prometheus_image: "docker.io/prom/prometheus@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06"
+
+# docker.io/grafana/grafana:13.3.1
+grafana_image: "docker.io/grafana/grafana@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf"
+
 # docker.io/stilldeadcode/radiance:latest as of 2026-11-10 (source tree at 1.17.0)
 radiance_engine_image: "docker.io/stilldeadcode/radiance@sha256:c2acbaa373c89272ec47a22befa1cf04d2ddf1de51c2baf534f5273e517f7100"
 

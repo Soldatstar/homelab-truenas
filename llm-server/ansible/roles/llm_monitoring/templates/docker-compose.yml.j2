@@ -14,3 +14,10 @@ services:
     volumes:
       - /:/host:ro,rslave
       - "{{ llm_data_dir }}/textfile:/textfile:ro"
+    networks:
+      - llm
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"

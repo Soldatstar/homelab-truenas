@@ -1,0 +1,14 @@
+---
+- name: Restart prometheus
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/dashboard"
+    services:
+      - prometheus
+    state: restarted
+
+- name: Restart grafana
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/dashboard"
+    services:
+      - grafana
+    state: restarted
