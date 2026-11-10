@@ -83,7 +83,9 @@ llm_profile_settings: "{{ llm_profiles[llm_profile] }}"
 vllm_gpu_memory_utilization: 0.90
 vllm_max_num_batched_tokens: 4096
 vllm_hip_visible_devices: "0,1"
-vllm_default_reasoning_effort: xhigh # upstream default; requests may override
+# Qwen3.8's template accepts only low, medium and xhigh (upstream default: xhigh).
+# Requests may override it per call.
+vllm_default_reasoning_effort: medium
 vllm_prefix_caching: true # --enable-prefix-caching + --mamba-cache-mode=align
 vllm_health_timeout_minutes: 45 # first start compiles kernels and captures graphs
 vllm_radiance_expected_version: 1.1.0-rc1.vllm0.30.0 # /opt/radiance_version in the image
@@ -143,7 +145,7 @@ openwebui_autocomplete_generation: false # fires on every keystroke pause
 # URI https://<llm_chat_domain>/oauth/oidc/callback (strict), then store the client
 # secret as vault_webui_oauth_client_secret and set the flag to true.
 # The container resolves and calls the Authentik host itself, not only your browser.
-openwebui_oauth_enabled: false
+openwebui_oauth_enabled: true
 openwebui_oauth_provider_name: Authentik
 openwebui_oauth_client_id: 9yNg8fMA1XOD9Pq70LvdJcZRpumT6Qv4yST5tFzR
 openwebui_oauth_provider_url: https://authentik.viktornote.ch/application/o/open-web-ui/.well-known/openid-configuration

@@ -187,8 +187,9 @@ If the `/v1/messages` check fails, set `litellm_enabled: true`, re-run `site.yml
 - `ENABLE_PERSISTENT_CONFIG=false`: the settings in `open-webui.env.j2` are applied on every
   start, and changes to those same settings in the admin UI do not survive a restart. Chats,
   users and uploaded documents are stored normally under `/srv/llm/open-webui`.
-- The model defaults to `xhigh` reasoning effort (upstream's default). If titles and tags
-  feel slow, lower `vllm_default_reasoning_effort`.
+- The model's default reasoning effort is `medium` (upstream's default is `xhigh`; the
+  template accepts only `low`, `medium` and `xhigh`). Change `vllm_default_reasoning_effort`
+  and re-run with `--tags engine` to trade answer depth for speed.
 - Toggles in `main.yml`: SearXNG web search (on), Postgres (off), trusted-header SSO for
   Authentik (off), CPU embedding model for RAG.
 
