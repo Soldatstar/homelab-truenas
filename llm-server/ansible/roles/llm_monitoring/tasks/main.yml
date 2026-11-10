@@ -1,0 +1,74 @@
+---
+# Always installs `llm-gpu-stats` (temperature, fan, VRAM, load from amdgpu
+# sysfs; no host ROCm needed). With llm_metrics_enabled it also exports those
+# values through node-exporter for Prometheus.
+
+- name: Install the GPU stats script
+  ansible.builtin.copy:
+    src: llm-gpu-stats.sh
+    dest: /usr/local/bin/llm-gpu-stats
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create monitoring directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ llm_base_dir }}/monitoring"
+    - "{{ llm_data_dir }}/textfile"
+  when: llm_metrics_enabled
+
+- name: Install the GPU metrics units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - llm-gpu-metrics.service
+    - llm-gpu-metrics.timer
+  when: llm_metrics_enabled
+
+- name: Enable the GPU metrics timer
+  ansible.builtin.systemd_service:
+    name: llm-gpu-metrics.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: llm_metrics_enabled
+
+- name: Template the node-exporter compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/monitoring/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  when: llm_metrics_enabled
+
+- name: Start node-exporter
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/monitoring"
+    state: present
+    pull: missing
+  when: llm_metrics_enabled
+
+- name: Check for a previous monitoring deployment
+  ansible.builtin.stat:
+    path: "{{ llm_base_dir }}/monitoring/docker-compose.yml"
+  register: llm_monitoring_compose
+  when: not llm_metrics_enabled
+
+- name: Stop node-exporter when metrics are disabled
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/monitoring"
+    state: absent
+  when:
+    - not llm_metrics_enabled
+    - llm_monitoring_compose.stat.exists

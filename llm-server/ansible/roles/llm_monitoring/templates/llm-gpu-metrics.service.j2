@@ -1,0 +1,7 @@
+# Managed by Ansible (llm_monitoring).
+[Unit]
+Description=Write AMD GPU metrics for the node-exporter textfile collector
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/local/bin/llm-gpu-stats --prom > {{ llm_data_dir }}/textfile/llm_gpu.prom.tmp && mv {{ llm_data_dir }}/textfile/llm_gpu.prom.tmp {{ llm_data_dir }}/textfile/llm_gpu.prom'

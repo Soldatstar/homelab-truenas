@@ -1,0 +1,16 @@
+# Managed by Ansible (llm_monitoring). Do not edit on the host.
+name: llm-monitoring
+services:
+  node-exporter:
+    image: "{{ node_exporter_image }}"
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/textfile
+    pid: host
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_metrics_port }}:9100"
+    volumes:
+      - /:/host:ro,rslave
+      - "{{ llm_data_dir }}/textfile:/textfile:ro"
