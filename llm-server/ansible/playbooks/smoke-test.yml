@@ -107,7 +107,10 @@
           Authorization: "Bearer {{ smoke_signin.json.token }}"
         return_content: true
       register: smoke_webui_models
-      failed_when: llm_served_model_name not in (smoke_webui_models.json.data | map(attribute='id') | list)
+      # Any served name counts: entries hidden in the Open WebUI admin settings are not listed.
+      failed_when: >-
+        (smoke_webui_models.json.data | map(attribute='id') | list)
+        | intersect([llm_served_model_name] + llm_served_model_aliases) | length == 0
 
     - name: Check Open WebUI also lists the CPU model
       ansible.builtin.assert:
