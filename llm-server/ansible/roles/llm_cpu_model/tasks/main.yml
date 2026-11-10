@@ -1,0 +1,86 @@
+---
+# A small model served from system RAM with llama.cpp, next to the GPU engine.
+# Internal only (no published port); Open WebUI reaches it as http://llm-cpu:8080/v1.
+
+- name: Install the download tooling
+  ansible.builtin.include_role:
+    name: llm_models
+    tasks_from: helper
+
+- name: Create the CPU model directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ llm_base_dir }}/llm-cpu"
+    - "{{ llm_models_dir }}/cpu"
+
+- name: Download the GGUF file (about 19 GB on first run)
+  ansible.builtin.command:
+    argv:
+      - "{{ llm_base_dir }}/hf-venv/bin/python"
+      - "{{ llm_base_dir }}/bin/hf_snapshot.py"
+      - "{{ llm_cpu_model_repo }}"
+      - "{{ llm_cpu_model_revision }}"
+      - "{{ llm_models_dir }}/cpu"
+      - "{{ llm_cpu_model_file }}"
+    creates: "{{ llm_models_dir }}/cpu/{{ llm_cpu_model_file }}"
+  environment:
+    HF_HOME: "{{ llm_hf_cache_dir }}"
+    HF_TOKEN: "{{ vault_hf_token | default('') }}"
+  async: 7200
+  poll: 30
+  no_log: true
+
+- name: Write the llama.cpp secrets file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/llm-cpu/llm-cpu.env"
+    content: |
+      LLAMA_API_KEY={{ vault_llm_api_key }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Template the llama.cpp compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/llm-cpu/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start the CPU model
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/llm-cpu"
+    state: present
+    pull: missing
+    remove_orphans: true
+
+- name: Wait for the CPU model to load
+  when: not ansible_check_mode
+  block:
+    - name: Wait for the container health check
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{% raw %}{{.State.Health.Status}}{% endraw %}", llm-cpu]
+      register: llm_cpu_model_health
+      changed_when: false
+      until: llm_cpu_model_health.stdout | trim == 'healthy'
+      retries: 60
+      delay: 10
+  rescue:
+    - name: Collect the last container log lines
+      ansible.builtin.command:
+        argv: [docker, logs, --tail, "40", llm-cpu]
+      register: llm_cpu_model_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Fail with the log
+      ansible.builtin.fail:
+        msg: |
+          The CPU model did not become healthy within 10 minutes. Last log lines:
+          {{ (llm_cpu_model_logs.stdout_lines | default([]) + llm_cpu_model_logs.stderr_lines | default([])) | join('\n') }}

@@ -1,0 +1,50 @@
+# Managed by Ansible (llm_cpu_model). Do not edit on the host.
+# CPU-only llama.cpp server. The context is split evenly between the parallel slots:
+# {{ llm_cpu_parallel }} slots x {{ llm_cpu_ctx_per_slot }} tokens.
+name: llm-cpu
+services:
+  llm-cpu:
+    image: "{{ llamacpp_cpu_image }}"
+    container_name: llm-cpu
+    restart: unless-stopped
+    command:
+      - --model
+      - /models/{{ llm_cpu_model_file }}
+      - --alias
+      - "{{ llm_cpu_served_name }}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --threads
+      - "{{ llm_cpu_threads }}"
+      - --threads-batch
+      - "{{ llm_cpu_threads_batch }}"
+      - --parallel
+      - "{{ llm_cpu_parallel }}"
+      - --ctx-size
+      - "{{ llm_cpu_parallel * llm_cpu_ctx_per_slot }}"
+      # Chat template from the model file, needed for tool calls.
+      - --jinja
+      - --no-webui
+    env_file:
+      - llm-cpu.env
+    # Hard cap so prefill on this model can never starve the GPU engine's CPU threads.
+    cpus: "{{ llm_cpu_cpu_limit }}"
+    volumes:
+      - "{{ llm_models_dir }}/cpu:/models:ro"
+    networks:
+      llm:
+        aliases:
+          - llm-cpu
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"

@@ -40,6 +40,9 @@ grafana_image: "docker.io/grafana/grafana@sha256:0615ec4fbd4072004b7d86b46ded630
 # docker.io/stilldeadcode/radiance:latest as of 2026-11-10 (source tree at 1.17.0)
 radiance_engine_image: "docker.io/stilldeadcode/radiance@sha256:c2acbaa373c89272ec47a22befa1cf04d2ddf1de51c2baf534f5273e517f7100"
 
+# CPU model server. ghcr.io/ggml-org/llama.cpp:server (the CPU build) as of 2026-11-10
+llamacpp_cpu_image: "ghcr.io/ggml-org/llama.cpp@sha256:4d2de15a0ffbce704777c64026b40512a71e0bbc0b303a5fe5ea9bf71760dff9"
+
 # Fallback engine. ghcr.io/ggml-org/llama.cpp:server-vulkan as of 2026-11-10
 llamacpp_image: "ghcr.io/ggml-org/llama.cpp@sha256:28a56d03c5cc4abeb16b2a5422c5286d9e48020a3cb3416434bff5fbf847bfa6"
 # ghcr.io/ggml-org/llama.cpp:server-rocm as of 2026-11-10 (alternative backend)

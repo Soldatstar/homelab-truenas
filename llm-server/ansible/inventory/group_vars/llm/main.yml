@@ -163,6 +163,7 @@ openwebui_postgres_enabled: false # SQLite is plenty for a household
 openwebui_searxng_enabled: true # web search, no VRAM
 openwebui_rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2 # runs on CPU
 # Background tasks each take a sequence on the same model for a few seconds.
+openwebui_task_model: "{{ llm_cpu_served_name if (llm_cpu_model_enabled and llm_cpu_use_for_tasks) else llm_served_model_name }}"
 openwebui_title_generation: true
 openwebui_tags_generation: true
 openwebui_follow_up_generation: true
@@ -185,6 +186,23 @@ openwebui_trusted_name_header: ""
 # ---------------------------------------------------------------------------
 # Optional components
 # ---------------------------------------------------------------------------
+# A small model served from system RAM (llama.cpp, CPU only) for simple jobs. It shows up
+# in Open WebUI's model list next to the GPU model. Internal only, no published port.
+# A 35B model with 3B active parameters suits CPUs: each token reads little memory.
+llm_cpu_model_enabled: true
+llm_cpu_model_repo: ggml-org/Qwen3.6-35B-A3B-GGUF
+llm_cpu_model_revision: eb0b3cc97fecddab7eee6e6ffdbe92d2a00afcea # HF commit, 2026-11-10
+llm_cpu_model_file: Qwen3.6-35B-A3B-Q4_K_M.gguf # 19.1 GiB
+llm_cpu_served_name: qwen3.6-35b-a3b-cpu
+llm_cpu_threads: 24 # decoding; the host has 96 hardware threads
+llm_cpu_threads_batch: 32 # prompt processing
+llm_cpu_cpu_limit: 32 # hard cap for the container, so the GPU engine keeps its CPU
+llm_cpu_parallel: 2 # concurrent requests
+llm_cpu_ctx_per_slot: 32768 # context per request (the total is split between the slots)
+# Send Open WebUI's background jobs (titles, tags, follow-ups, search queries) to this
+# model instead of the GPU model, so they stop taking GPU sequences from your chat.
+llm_cpu_use_for_tasks: false
+
 # Only needed if the engine's native /v1/messages fails the smoke test.
 litellm_enabled: false
 litellm_port: 4000

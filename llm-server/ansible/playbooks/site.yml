@@ -44,6 +44,9 @@
     - role: radiance_engine
       tags: [engine]
       when: llm_engine == 'radiance_engine'
+    - role: llm_cpu_model
+      tags: [cpu]
+      when: llm_cpu_model_enabled
     - role: open_webui
       tags: [webui]
     - role: litellm

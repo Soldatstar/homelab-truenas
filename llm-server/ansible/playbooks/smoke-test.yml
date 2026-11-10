@@ -109,6 +109,37 @@
       register: smoke_webui_models
       failed_when: llm_served_model_name not in (smoke_webui_models.json.data | map(attribute='id') | list)
 
+    - name: Check Open WebUI also lists the CPU model
+      ansible.builtin.assert:
+        that: llm_cpu_served_name in (smoke_webui_models.json.data | map(attribute='id') | list)
+        fail_msg: "{{ llm_cpu_served_name }} is not in Open WebUI's model list; check docker logs llm-cpu and open-webui."
+        quiet: true
+      when: llm_cpu_model_enabled
+
+    # Goes through the Open WebUI container, the same network path real requests take.
+    - name: Check the CPU model answers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - open-webui
+          - curl
+          - -s
+          - -m
+          - "300"
+          - -H
+          - "Authorization: Bearer {{ vault_llm_api_key }}"
+          - -H
+          - "Content-Type: application/json"
+          - -d
+          - "{{ {'model': llm_cpu_served_name, 'messages': [{'role': 'user', 'content': 'Reply with the single word OK.'}], 'max_tokens': 64} | to_json }}"
+          - http://llm-cpu:8080/v1/chat/completions
+      register: smoke_cpu
+      changed_when: false
+      failed_when: "'\"choices\"' not in smoke_cpu.stdout"
+      no_log: true
+      when: llm_cpu_model_enabled
+
     - name: Check that public signup is closed
       ansible.builtin.uri:
         url: "{{ smoke_webui_url }}/api/v1/auths/signup"
