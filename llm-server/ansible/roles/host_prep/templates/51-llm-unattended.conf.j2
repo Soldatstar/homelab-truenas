@@ -1,0 +1,8 @@
+// Managed by Ansible (host_prep).
+// Kernel, GPU firmware and Docker are updated by hand: docs/kernel-update.md
+Unattended-Upgrade::Package-Blacklist {
+{% for pattern in host_prep_unattended_blacklist %}
+    "{{ pattern }}";
+{% endfor %}
+};
+Unattended-Upgrade::Automatic-Reboot "false";

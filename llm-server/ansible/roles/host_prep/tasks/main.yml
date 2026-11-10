@@ -1,0 +1,121 @@
+---
+- name: Assert a supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.distribution_version is version('26.04', '>=')
+    fail_msg: "This role targets Ubuntu 26.04 (GA 7.0 kernel with in-tree amdgpu for gfx1201)."
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - numactl
+      - pciutils
+      - python3-debian
+      - python3-venv
+      - ufw
+      - unattended-upgrades
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check for the amdgpu compute device
+  ansible.builtin.stat:
+    path: /dev/kfd
+  register: host_prep_kfd
+
+- name: Find GPU render nodes
+  ansible.builtin.find:
+    paths: /dev/dri
+    patterns: "renderD*"
+    file_type: any
+  register: host_prep_render_nodes
+
+- name: Assert both R9700 cards are driven by amdgpu
+  ansible.builtin.assert:
+    that:
+      - host_prep_kfd.stat.exists
+      - host_prep_render_nodes.matched >= 2
+    fail_msg: >-
+      /dev/kfd or the two /dev/dri/renderD* nodes are missing. The in-kernel amdgpu
+      driver did not bind both cards; see docs/bios-kernel-checklist.md.
+
+- name: Add the admin user to the render and video groups
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups:
+      - render
+      - video
+    append: true
+
+- name: Create LLM directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ llm_base_dir }}"
+    - "{{ llm_base_dir }}/bin"
+    - "{{ llm_data_dir }}"
+    - "{{ llm_models_dir }}"
+    - "{{ llm_hf_cache_dir }}"
+    - "{{ llm_engine_cache_dir }}"
+
+- name: Raise vm.max_map_count for large ROCm mappings
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "1048576"
+    sysctl_file: /etc/sysctl.d/60-llm.conf
+    state: present
+
+- name: Manage extra kernel command line parameters
+  ansible.builtin.copy:
+    dest: /etc/default/grub.d/50-llm.cfg
+    content: |
+      # Managed by Ansible (host_prep). Takes effect after reboot.
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT {{ host_prep_kernel_cmdline_extra }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: host_prep_kernel_cmdline_extra | length > 0
+  notify: Update grub
+
+- name: Remove the kernel command line drop-in when unused
+  ansible.builtin.file:
+    path: /etc/default/grub.d/50-llm.cfg
+    state: absent
+  when: host_prep_kernel_cmdline_extra | length == 0
+  notify: Update grub
+
+- name: Enable unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Keep unattended-upgrades away from kernel, firmware and Docker
+  ansible.builtin.template:
+    src: 51-llm-unattended.conf.j2
+    dest: /etc/apt/apt.conf.d/51-llm-unattended
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Gather installed packages
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Hold kernel and GPU firmware packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ host_prep_hold_packages }}"
+  when: item in ansible_facts.packages
