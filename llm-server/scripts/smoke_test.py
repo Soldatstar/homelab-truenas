@@ -86,13 +86,16 @@ class Client:
                         ttft = time.monotonic() - start
         return ttft, usage
 
-    def metric_sum(self, fragment):
+    def metric_sum(self, name):
+        """Sum all label sets of one metric, matched by its exact name.
+
+        Matching on a name fragment is wrong: "num_preemptions" would also add up the
+        buckets of the request_num_preemptions histogram.
+        """
         text = self.call("GET", "/metrics")
         total, found = 0.0, False
         for line in str(text).splitlines():
-            if line.startswith("#") or fragment not in line.split(" ")[0]:
-                continue
-            if "_created" in line.split(" ")[0]:
+            if line.startswith("#") or line.split("{")[0].split(" ")[0] != name:
                 continue
             try:
                 total += float(line.rsplit(" ", 1)[1])
@@ -230,10 +233,10 @@ def test_prefix_cache(client, model, lines):
         "messages": [{"role": "user", "content": prefix + "\nReply with the single word OK."}],
         "max_tokens": 32,
     }
-    hits_before = client.metric_sum("prefix_cache_hits")
+    hits_before = client.metric_sum("vllm:prefix_cache_hits_total")
     cold, usage = client.stream_chat(body)
     warm, usage_warm = client.stream_chat(body)
-    hits_after = client.metric_sum("prefix_cache_hits")
+    hits_after = client.metric_sum("vllm:prefix_cache_hits_total")
     if cold is None or warm is None:
         raise RuntimeError("the server streamed no tokens for the prefix probe")
     prompt_tokens = (usage or {}).get("prompt_tokens", 0)
@@ -280,7 +283,7 @@ def main():
         test_prefix_cache(client, args.model, args.prefix_lines)
     preemptions = None
     try:
-        preemptions = client.metric_sum("num_preemptions")
+        preemptions = client.metric_sum("vllm:num_preemptions_total")
     except Exception:  # noqa: BLE001 - informational only
         pass
 
