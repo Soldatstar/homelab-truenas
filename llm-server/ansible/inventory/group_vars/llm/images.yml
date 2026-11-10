@@ -1,0 +1,40 @@
+---
+# Container images, pinned by digest. Tags are comments only.
+#
+# How to update one image:
+#   1. Find the new tag upstream, then resolve its digest on any machine:
+#        docker buildx imagetools inspect <image>:<tag>     (prints "Digest: sha256:...")
+#      or, without Docker: llm-server/scripts/resolve-digest.sh <image> <tag>
+#   2. Replace the digest below and update the tag comment and VERSIONS.md.
+#   3. ansible-playbook playbooks/site.yml && ansible-playbook playbooks/smoke-test.yml
+#
+# vllm-radiance: do not jump to a tag just because it is newer. Check the
+# VERSION file of the matching commit (tag sha-<commit>) and upstream's
+# qualification docs first; update vllm_radiance_expected_version with it.
+
+# magiccodingman/vllm-radiance:1.0.387 (= sha-1855cd8cdb3b, pushed 2026-09-23)
+# VERSION 1.1.0-rc1.vllm0.30.0, the build of the v0.30 qualification publication.
+vllm_radiance_image: "docker.io/magiccodingman/vllm-radiance@sha256:c0e8f375de5a461e6aff0761593c85d57f32165b616f073fc3b9971eb702545f"
+
+# ghcr.io/open-webui/open-webui:v0.13.3
+openwebui_image: "ghcr.io/open-webui/open-webui@sha256:46b59158e6558eeb980bc828e0f1b30238ad24d82ed84d5e5eda1dab2a082f14"
+
+# docker.io/searxng/searxng:latest as of 2026-11-10 (rolling release, no version tags)
+searxng_image: "docker.io/searxng/searxng@sha256:287af61f1a13e86d02974fcde91a3413a9945788de38b61ffbc491d81a19bcc2"
+
+# docker.io/library/postgres:17 as of 2026-11-10
+postgres_image: "docker.io/library/postgres@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f"
+
+# ghcr.io/berriai/litellm:main-stable as of 2026-11-10 (latest release then: v1.108.4)
+litellm_image: "ghcr.io/berriai/litellm@sha256:c560d317136880ea92d62334d4367ab10955b1af189dd3ea24f6551290b1d6c1"
+
+# docker.io/prom/node-exporter:v1.12.1
+node_exporter_image: "docker.io/prom/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0"
+
+# docker.io/stilldeadcode/radiance:latest as of 2026-11-10 (source tree at 1.17.0)
+radiance_engine_image: "docker.io/stilldeadcode/radiance@sha256:c2acbaa373c89272ec47a22befa1cf04d2ddf1de51c2baf534f5273e517f7100"
+
+# Fallback engine. ghcr.io/ggml-org/llama.cpp:server-vulkan as of 2026-11-10
+llamacpp_image: "ghcr.io/ggml-org/llama.cpp@sha256:28a56d03c5cc4abeb16b2a5422c5286d9e48020a3cb3416434bff5fbf847bfa6"
+# ghcr.io/ggml-org/llama.cpp:server-rocm as of 2026-11-10 (alternative backend)
+llamacpp_rocm_image: "ghcr.io/ggml-org/llama.cpp@sha256:69b0ab208a2e17294195132ab6c75eb6e9d1828c0b87409891aff86b9726cdfd"

@@ -1,0 +1,155 @@
+---
+# ---------------------------------------------------------------------------
+# Network and exposure
+# ---------------------------------------------------------------------------
+llm_lan_ip: "{{ ansible_host }}"
+llm_lan_interface: eno1np0
+llm_admin_subnet: 192.168.1.0/24 # SSH is allowed from here only
+llm_proxy_ip: 192.168.1.10 # NPM Plus; Open WebUI trusts forwarded headers from it
+
+# Sources allowed to open NEW connections to Docker-published ports 3000 and
+# 8000 (enforced in the DOCKER-USER chain, see roles/llm_firewall). Everything
+# else is dropped. To admit only the proxy, use ["{{ llm_proxy_ip }}"].
+llm_allowed_sources:
+  - 192.168.1.0/24
+# Further sources on top of the list above (appended, not replacing it).
+llm_extra_allowed_sources: []
+
+llm_chat_domain: chat.viktornote.ch
+llm_api_domain: llm.viktornote.ch
+
+llm_api_port: 8000 # inference API (OpenAI + Anthropic Messages)
+llm_webui_port: 3000 # Open WebUI
+
+# ---------------------------------------------------------------------------
+# Paths (the host has one 1.8T NVMe mounted at /, so everything lives there)
+# ---------------------------------------------------------------------------
+llm_base_dir: /opt/llm # compose projects, helper scripts
+llm_data_dir: /srv/llm # models, caches, application data
+llm_models_dir: "{{ llm_data_dir }}/models"
+llm_hf_cache_dir: "{{ llm_data_dir }}/hf-cache"
+llm_engine_cache_dir: "{{ llm_data_dir }}/vllm-cache" # Triton/inductor/AITER/vLLM JIT caches
+docker_data_root: /var/lib/docker # already on the NVMe; change before first run only
+llm_docker_network: llm
+llm_backend_alias: llm-backend # DNS name of the active engine on the Docker network
+
+# ---------------------------------------------------------------------------
+# Engine and model
+# ---------------------------------------------------------------------------
+# vllm_radiance  = magiccodingman/vllm-radiance (default, qualified)
+# radiance_engine = StillDeadcode/radiance (optional, untested skeleton)
+llm_engine: vllm_radiance
+
+llm_model_repo: amd/Qwen3.8-27B-Quark-AWQ-MXFP4
+# Commit of the HF repo at the time of writing (2026-11-10). Bump deliberately.
+llm_model_revision: 93245f7c00f1a8964b66a97c6e02e2fd09080be4
+llm_model_dirname: Qwen3.8-27B-Quark-AWQ-MXFP4
+llm_model_weight_format: mxfp4 # mxfp4 | fp8
+
+# FP8 alternative (28.75 GiB weights; upstream capacity 128K x2 / 256K x1 at
+# gpu_memory_utilization 0.85). Upstream names no public HF repo for it, so
+# fill in the repo yourself before using it:
+# llm_model_repo: <owner>/<native-fp8-qwen3.8-27b-checkpoint>
+# llm_model_revision: <commit sha>
+# llm_model_dirname: <directory name>
+# llm_model_weight_format: fp8
+# vllm_gpu_memory_utilization: 0.85
+# llm_profile: chat   # and lower max_num_seqs/max_model_len per the FP8 table
+
+llm_served_model_name: qwen3.8-27b
+llm_served_model_aliases:
+  - claude-local
+
+# ---------------------------------------------------------------------------
+# Serving profile. max_num_seqs is an admission ceiling, not a reservation:
+# vLLM allocates KV blocks on demand from one shared pool (about 576K tokens
+# with prefix caching + align, per upstream's boot log at 90% allocation).
+# Never use max_num_seqs 1: Open WebUI background tasks and Claude Code's
+# small-model/subagent calls need their own sequences.
+# ---------------------------------------------------------------------------
+llm_profile: chat
+llm_profiles:
+  chat: # upstream-qualified production profile (prefix cache + align)
+    max_model_len: 131072
+    max_num_seqs: 4
+  long: # UNTESTED: upstream ran 262144 only with prefix caching off
+    max_model_len: 262144
+    max_num_seqs: 4
+  coding: # UNTESTED with prefix caching on, like "long" but fewer sequences
+    max_model_len: 262144
+    max_num_seqs: 2
+llm_profile_settings: "{{ llm_profiles[llm_profile] }}"
+
+vllm_gpu_memory_utilization: 0.90
+vllm_max_num_batched_tokens: 4096
+vllm_hip_visible_devices: "0,1"
+vllm_default_reasoning_effort: xhigh # upstream default; requests may override
+vllm_prefix_caching: true # --enable-prefix-caching + --mamba-cache-mode=align
+vllm_health_timeout_minutes: 45 # first start compiles kernels and captures graphs
+vllm_radiance_expected_version: 1.1.0-rc1.vllm0.30.0 # /opt/radiance_version in the image
+
+# Experimental upstream features. All OFF: none has passed upstream's strict
+# output-equivalence gate, and MTP failed the tool-call gate. See README.
+vllm_experimental:
+  speculative_config: "" # raw JSON for --speculative-config (MTP or DFlash)
+  compilation_config: "" # raw JSON, DFlash2 needs {"cudagraph_mode":"PIECEWISE"}
+  v2_model_runner: false # required by DFlash2
+  fast_draft: false
+  quark_bf16_mtp: false # only with MTP on the Quark checkpoint
+  normquant_fusion: false # upstream: do not enable in production
+  fp8_stream: false # upstream: do not enable in production
+  gdn_norm_quant: false
+  r4d_attn_fp8: 0 # 3 enables FP8 QK/PV prefill legs
+  kv_offloading_size: "" # GiB of CPU KV tier
+
+# ---------------------------------------------------------------------------
+# Host preparation
+# ---------------------------------------------------------------------------
+# Extra kernel command line, e.g. "iommu=pt". Empty: IOMMU is currently off on
+# this host (no iommu groups), which is the simplest setup for GPU P2P.
+host_prep_kernel_cmdline_extra: ""
+host_prep_hold_packages:
+  - linux-generic
+  - linux-image-generic
+  - linux-headers-generic
+  - linux-firmware
+  - linux-firmware-amd-graphics
+host_prep_unattended_blacklist:
+  - "linux-image"
+  - "linux-headers"
+  - "linux-modules"
+  - "linux-generic"
+  - "linux-firmware"
+  - "docker-ce"
+  - "containerd.io"
+
+# ---------------------------------------------------------------------------
+# Open WebUI
+# ---------------------------------------------------------------------------
+openwebui_postgres_enabled: false # SQLite is plenty for a household
+openwebui_searxng_enabled: true # web search, no VRAM
+openwebui_rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2 # runs on CPU
+# Background tasks each take a sequence on the same model for a few seconds.
+openwebui_title_generation: true
+openwebui_tags_generation: true
+openwebui_follow_up_generation: true
+openwebui_autocomplete_generation: false # fires on every keystroke pause
+# Trusted-header SSO (Authentik via NPM Plus). Only safe because the firewall
+# admits only your LAN, so keep the proxy as the sole route to port 3000 (or
+# narrow llm_allowed_sources to the proxy) before enabling this.
+# Example: X-authentik-email
+openwebui_trusted_email_header: ""
+openwebui_trusted_name_header: ""
+
+# ---------------------------------------------------------------------------
+# Optional components
+# ---------------------------------------------------------------------------
+# Only needed if the engine's native /v1/messages fails the smoke test.
+litellm_enabled: false
+litellm_port: 4000
+
+# Prometheus: vLLM /metrics is always served on the API port; this adds
+# node-exporter with AMD GPU sysfs metrics and opens the firewall for scrapers.
+llm_metrics_enabled: false
+llm_metrics_port: 9100
+llm_metrics_sources: [] # Prometheus server IPs

@@ -1,0 +1,10 @@
+---
+all:
+  children:
+    llm:
+      hosts:
+        llmviktor:
+          ansible_host: 192.168.1.41
+      vars:
+        ansible_user: viktor
+        ansible_python_interpreter: /usr/bin/python3

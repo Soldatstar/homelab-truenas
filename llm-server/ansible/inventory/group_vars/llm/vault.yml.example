@@ -1,0 +1,23 @@
+---
+# Copy to vault.yml, fill in, then encrypt BEFORE committing:
+#   cp vault.yml.example vault.yml
+#   ansible-vault encrypt vault.yml
+# site.yml refuses to run while vault.yml is plaintext.
+# Generate secrets with: openssl rand -hex 32
+
+# Hugging Face token. The default model is public, so this may stay empty.
+vault_hf_token: ""
+
+# API key for the inference endpoint (OpenAI and Anthropic routes, Claude Code).
+vault_llm_api_key: "CHANGE_ME"
+
+# Open WebUI
+vault_webui_secret_key: "CHANGE_ME"
+vault_webui_admin_name: "Viktor"
+vault_webui_admin_email: "admin@example.com"
+vault_webui_admin_password: "CHANGE_ME"
+
+# Optional components (only read when the matching toggle is on)
+vault_searxng_secret: "CHANGE_ME"
+vault_postgres_password: "CHANGE_ME"
+vault_litellm_master_key: "sk-CHANGE_ME"
