@@ -51,6 +51,17 @@ ansible-playbook playbooks/smoke-test.yml --ask-become-pass --ask-vault-pass
 It uses the `chat-fp8` profile (131,072 x 2, 85% GPU memory) automatically. The first start
 compiles kernels again for the new weight format.
 
+## CPU model (llm-cpu)
+
+- Never becomes healthy: `sudo docker logs --tail 50 llm-cpu`. A failed model load usually
+  means the GGUF is incomplete (delete it from `/srv/llm/models/cpu/` and re-run
+  `--tags cpu`) or that the container hit a memory limit.
+- Not in Open WebUI's model list: check `sudo docker exec open-webui sh -c 'env | grep OPENAI_API'`
+  shows two URLs separated by `;`. Re-run `--tags webui` if not.
+- Slow answers after web search: expected on CPU (long input). Use the GPU model for those.
+- The GPU engine got slower while the CPU model works: lower `llm_cpu_cpu_limit` and
+  `llm_cpu_threads_batch`, then re-run `--tags cpu`.
+
 ## Slow or stalling requests
 
 - `vllm:num_preemptions_total` rising on `/metrics`: the KV pool is full, usually several

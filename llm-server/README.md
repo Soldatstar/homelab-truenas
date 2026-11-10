@@ -258,6 +258,28 @@ python3 scripts/bench.py --base-url http://192.168.1.41:8000 --model qwen3.8-27b
 Upstream's reference for this model without speculation: about 53 tok/s single stream and
 102 tok/s aggregate at two streams.
 
+## Small model in system RAM
+
+A second, CPU-only model runs next to the GPU engine: `qwen3.6-35b-a3b-cpu`, Qwen3.6-35B-A3B
+as a 4-bit GGUF (19.1 GiB in RAM) served by llama.cpp. It shows up in Open WebUI's model
+list as a separate choice and uses no VRAM. It is not reachable from outside Docker, and it
+is independent of which GPU model is loaded. Claude Code does not use it.
+
+- **Why this model:** a MoE reads only about 3B parameters per generated token, which is what
+  a CPU can handle. Rough estimate, not measured here: 15–25 tokens/s for replies.
+- **Weak spot:** reading long input on a CPU takes a few hundred tokens per second, so a web
+  search result of several thousand tokens may take 10–30 s before the answer starts.
+- **CPU use:** 24 threads for decoding, 32 for prompt processing, and a hard cap of 32 CPUs
+  for the container so the GPU engine always keeps enough CPU. Context is 32,768 tokens per
+  request, 2 requests at once.
+- **Background jobs:** set `llm_cpu_use_for_tasks: true` in `main.yml` to send Open WebUI's
+  titles, tags, follow-ups and search-query generation to this model. That frees GPU
+  sequences for your chat and Claude Code; the cost is weaker search queries.
+- **Turn it off:** `llm_cpu_model_enabled: false`, then `site.yml --tags cpu,webui`.
+
+Apply with `ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags cpu,webui`.
+The first run downloads 19 GB. The Open WebUI container is recreated to add the connection.
+
 ## Dashboard (optional)
 
 Prometheus + Grafana on the host, with a provisioned "Local LLM" dashboard: running and

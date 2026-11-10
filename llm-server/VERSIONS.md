@@ -9,6 +9,8 @@ Recorded 2026-11-10. Every decision in this folder traces back to one of these.
 | vllm-radiance | Docker Hub `1.0.387` = `sha-1855cd8cdb3b`, pushed 2026-09-23. `VERSION` at that commit: `1.1.0-rc1.vllm0.30.0` | `sha256:c0e8f375de5a...` |
 | Model | `amd/Qwen3.8-27B-Quark-AWQ-MXFP4`, last modified 2026-11-03, public, Apache-2.0 | commit `93245f7c00f1...` |
 | Model (alternative) | `Qwen/Qwen3.8-27B-FP8`, public, 27.8B parameters, modified 2026-11-07 | commit `c3a462cc3d38...` |
+| CPU model | `ggml-org/Qwen3.6-35B-A3B-GGUF`, `Qwen3.6-35B-A3B-Q4_K_M.gguf` (19.1 GiB), modified 2026-11-08 | commit `eb0b3cc97fec...` |
+| llama.cpp CPU server | `ghcr.io/ggml-org/llama.cpp:server` on 2026-11-10 | `sha256:4d2de15a0ffb...` |
 | Open WebUI | v0.13.3 | `sha256:46b59158e655...` |
 | SearXNG | `latest` on 2026-11-10 | `sha256:287af61f1a13...` |
 | Postgres (optional) | 17 | `sha256:ff87138949ad...` |
@@ -78,5 +80,8 @@ These are assumptions until `smoke-test.yml` has passed on the host:
 5. `--enable-prompt-tokens-details` and the `memlock`/`nofile` ulimits are additions that
    upstream's compose does not have.
 6. The `radiance_engine` and `llamacpp_fallback` roles are untested skeletons.
+7. The CPU model (`llm_cpu_model` role) has not been run: that the `server` image starts with
+   these flags, has `curl` for its health check, loads the GGUF, and reaches the expected speed.
+   The `fp8` entry of `llm_models` is also untested.
 
 Checked: Docker's apt repository has a `resolute` (26.04) suite.
