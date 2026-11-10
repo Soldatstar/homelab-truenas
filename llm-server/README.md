@@ -235,6 +235,25 @@ python3 scripts/bench.py --base-url http://192.168.1.41:8000 --model qwen3.8-27b
 Upstream's reference for this model without speculation: about 53 tok/s single stream and
 102 tok/s aggregate at two streams.
 
+## Dashboard (optional)
+
+Prometheus + Grafana on the host, with a provisioned "Local LLM" dashboard: running and
+waiting requests, generation and prompt tokens/s, KV-cache use, prefix-cache hit rate,
+preemptions, time to first token, latency percentiles, and per-GPU load, VRAM, power,
+temperature and fan speed. Prometheus keeps 30 days (`llm_prometheus_retention`).
+
+```bash
+ansible-vault edit inventory/group_vars/llm/vault.yml     # add vault_grafana_admin_password
+# set llm_dashboard_enabled: true in inventory/group_vars/llm/main.yml
+ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags dashboard
+```
+
+Open `http://192.168.1.41:3001` and log in as `admin` with that password; the dashboard is the
+home page. Prometheus is not published and is only reachable by Grafana. The engine's
+`/metrics` is scraped by its Docker alias, so it keeps working if you switch engines
+(metric names are vLLM's; the llama.cpp fallback exposes different ones). To put Grafana
+behind NPM Plus, forward a host to port 3001 (websockets on).
+
 ## Operations
 
 | Task | Command (on the host) |
