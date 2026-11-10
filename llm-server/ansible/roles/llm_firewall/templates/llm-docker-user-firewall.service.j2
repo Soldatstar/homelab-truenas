@@ -1,0 +1,17 @@
+# Managed by Ansible (llm_firewall).
+# PartOf + WantedBy docker.service: re-applied on boot and on every Docker
+# (re)start, so the rules can never be missing while ports are published.
+[Unit]
+Description=Source restrictions for Docker-published ports (DOCKER-USER)
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/llm-docker-user-firewall apply
+ExecStop=/usr/local/sbin/llm-docker-user-firewall remove
+
+[Install]
+WantedBy=docker.service

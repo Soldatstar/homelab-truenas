@@ -1,0 +1,54 @@
+---
+# Two layers:
+#   ufw          guards the host's own ports (SSH).
+#   DOCKER-USER  guards Docker-published ports, which bypass ufw entirely.
+
+- name: Deny incoming traffic by default
+  community.general.ufw:
+    direction: incoming
+    default: deny
+
+- name: Allow outgoing traffic by default
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+
+- name: Allow SSH from the admin subnet only
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    port: "22"
+    from_ip: "{{ llm_admin_subnet }}"
+    comment: SSH from admin subnet
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+
+- name: Install the DOCKER-USER firewall script
+  ansible.builtin.template:
+    src: llm-docker-user-firewall.sh.j2
+    dest: /usr/local/sbin/llm-docker-user-firewall
+    owner: root
+    group: root
+    mode: "0750"
+  notify: Apply docker firewall
+
+- name: Install the DOCKER-USER firewall unit
+  ansible.builtin.template:
+    src: llm-docker-user-firewall.service.j2
+    dest: /etc/systemd/system/llm-docker-user-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply docker firewall
+
+- name: Enable the DOCKER-USER firewall unit
+  ansible.builtin.systemd_service:
+    name: llm-docker-user-firewall.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply firewall changes before any container is published
+  ansible.builtin.meta: flush_handlers
