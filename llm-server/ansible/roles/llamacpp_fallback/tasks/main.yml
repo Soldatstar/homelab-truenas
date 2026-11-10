@@ -1,0 +1,82 @@
+---
+# Documented fallback when vllm-radiance cannot start (driver regression,
+# broken image, bad checkpoint). llama.cpp serves both the OpenAI and the
+# Anthropic Messages API on the same port, so Open WebUI and Claude Code keep
+# working unchanged. UNTESTED on this host; expect lower throughput.
+
+- name: Assert a GGUF model is configured
+  ansible.builtin.assert:
+    that:
+      - llamacpp_gguf_repo is defined and llamacpp_gguf_repo | length > 0
+      - llamacpp_gguf_file is defined and llamacpp_gguf_file | length > 0
+    fail_msg: >-
+      Pass the GGUF to serve, for example:
+      -e llamacpp_gguf_repo=<owner>/<repo>-GGUF -e llamacpp_gguf_file=<file>.gguf
+      (no default is set on purpose; pick a quantisation that fits 2x 32 GB).
+
+- name: Create llama.cpp directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ llm_base_dir }}/llamacpp"
+    - "{{ llm_models_dir }}/gguf"
+
+- name: Install huggingface_hub into a dedicated virtualenv
+  ansible.builtin.pip:
+    name: "huggingface_hub{{ llm_models_hf_hub_spec | default('>=0.30') }}"
+    virtualenv: "{{ llm_base_dir }}/hf-venv"
+    virtualenv_command: python3 -m venv
+
+- name: Install the snapshot download helper
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../llm_models/files/hf_snapshot.py"
+    dest: "{{ llm_base_dir }}/bin/hf_snapshot.py"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the GGUF file
+  ansible.builtin.command:
+    argv:
+      - "{{ llm_base_dir }}/hf-venv/bin/python"
+      - "{{ llm_base_dir }}/bin/hf_snapshot.py"
+      - "{{ llamacpp_gguf_repo }}"
+      - "{{ llamacpp_gguf_revision | default('main') }}"
+      - "{{ llm_models_dir }}/gguf"
+      - "{{ llamacpp_gguf_file }}"
+    creates: "{{ llm_models_dir }}/gguf/{{ llamacpp_gguf_file }}"
+  environment:
+    HF_HOME: "{{ llm_hf_cache_dir }}"
+    HF_TOKEN: "{{ vault_hf_token | default('') }}"
+  async: 21600
+  poll: 30
+  no_log: true
+
+- name: Write the llama.cpp secrets file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/llamacpp/llamacpp.env"
+    content: |
+      LLAMA_API_KEY={{ vault_llm_api_key }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Template the llama.cpp compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/llamacpp/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start llama.cpp
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/llamacpp"
+    state: present
+    pull: missing
+    remove_orphans: true

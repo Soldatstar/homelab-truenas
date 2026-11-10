@@ -1,0 +1,17 @@
+---
+# Fallback engine when vllm-radiance cannot start. Stops the other engines and
+# serves a GGUF with llama.cpp on the same port and network alias.
+#   ansible-playbook playbooks/fallback-llamacpp.yml --ask-become-pass --ask-vault-pass \
+#     -e llamacpp_gguf_repo=<owner>/<repo>-GGUF -e llamacpp_gguf_file=<file>.gguf
+# Return to vllm-radiance by running site.yml again.
+- name: Serve a GGUF with llama.cpp instead of vllm-radiance
+  hosts: llm
+  become: true
+  pre_tasks:
+    - name: Stop the other engines
+      ansible.builtin.include_tasks:
+        file: tasks/stop_other_engines.yml
+      vars:
+        site_active_project: llamacpp
+  roles:
+    - role: llamacpp_fallback

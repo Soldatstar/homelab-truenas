@@ -1,0 +1,54 @@
+# Managed by Ansible (llamacpp_fallback). UNTESTED fallback engine.
+# Backend: {{ llamacpp_backend | default('vulkan') }} (set llamacpp_backend=rocm for the ROCm image)
+name: llamacpp
+services:
+  llamacpp:
+    image: "{{ llamacpp_rocm_image if (llamacpp_backend | default('vulkan')) == 'rocm' else llamacpp_image }}"
+    container_name: llamacpp
+    restart: unless-stopped
+    command:
+      - --model
+      - /models/{{ llamacpp_gguf_file }}
+      - --alias
+      - "{{ llm_served_model_name }}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --n-gpu-layers
+      - "999"
+      - --parallel
+      - "{{ llamacpp_parallel | default(2) }}"
+      # llama.cpp splits the context evenly between the parallel slots.
+      - --ctx-size
+      - "{{ llamacpp_ctx_size | default(131072) }}"
+      - --jinja
+    env_file:
+      - llamacpp.env
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "{{ llamacpp_render_gid | default('991') }}"
+      - "{{ llamacpp_video_gid | default('44') }}"
+    security_opt:
+      - seccomp=unconfined
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_api_port }}:8000"
+    volumes:
+      - "{{ llm_models_dir }}/gguf:/models:ro"
+    networks:
+      llm:
+        aliases:
+          - "{{ llm_backend_alias }}"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 600s
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"
