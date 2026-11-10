@@ -1,0 +1,170 @@
+# Managed by Ansible (vllm_radiance). Do not edit on the host.
+# Derived from upstream docker-compose.yml at commit 1855cd8cdb3b
+# (magiccodingman/vllm-radiance, VERSION 1.1.0-rc1.vllm0.30.0).
+# Profile: {{ llm_profile }} = {{ llm_profile_settings.max_model_len }} tokens x {{ llm_profile_settings.max_num_seqs }} sequences
+{% set mxfp4 = (llm_model_weight_format == 'mxfp4') %}
+{% set exp = vllm_experimental %}
+name: vllm-radiance
+services:
+  vllm:
+    image: "{{ vllm_radiance_image }}"
+    container_name: vllm-radiance
+    restart: unless-stopped
+    command:
+      - /models/{{ llm_model_dirname }}
+      - --served-model-name
+      - "{{ llm_served_model_name }}"
+{% for alias in llm_served_model_aliases %}
+      - "{{ alias }}"
+{% endfor %}
+      - --tensor-parallel-size=2
+      - --max-num-seqs={{ llm_profile_settings.max_num_seqs }}
+      - --max-model-len={{ llm_profile_settings.max_model_len }}
+      - --gpu-memory-utilization={{ vllm_gpu_memory_utilization }}
+      - --max-num-batched-tokens={{ vllm_max_num_batched_tokens }}
+      - --kv-cache-dtype=fp8
+      - --attention-backend=R4D
+{% if vllm_prefix_caching %}
+      # Both flags are needed: this is a GDN hybrid, and vLLM silently disables
+      # prefix caching for hybrids unless it is requested explicitly.
+      - --enable-prefix-caching
+      - --mamba-cache-mode=align
+{% else %}
+      - --no-enable-prefix-caching
+      - --mamba-cache-mode=none
+{% endif %}
+      - --no-async-scheduling
+      - --enable-auto-tool-choice
+      - --tool-call-parser=qwen3_coder
+      - --reasoning-parser=qwen3
+      - --generation-config=auto
+      - '--default-chat-template-kwargs={"reasoning_effort":"{{ vllm_default_reasoning_effort }}"}'
+      # Not in upstream's command: reports cached prompt tokens in usage.
+      - --enable-prompt-tokens-details
+      - --trust-remote-code
+      - --host=0.0.0.0
+      - --port=8000
+    env_file:
+      - vllm.env
+    environment:
+      HIP_VISIBLE_DEVICES: "{{ vllm_hip_visible_devices }}"
+      HIP_FORCE_DEV_KERNARG: "0"
+      TORCH_BLAS_PREFER_HIPBLASLT: "0"
+      # AITER: unified attention on, every other path off (LINEAR=1 crashes on gfx1201).
+      VLLM_ROCM_USE_AITER: "1"
+      VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION: "1"
+      VLLM_ROCM_USE_AITER_MHA: "0"
+      VLLM_ROCM_USE_AITER_MLA: "0"
+      VLLM_ROCM_USE_AITER_MOE: "0"
+      VLLM_ROCM_USE_AITER_LINEAR: "0"
+      VLLM_ROCM_USE_AITER_FP8BMM: "0"
+      VLLM_ROCM_USE_AITER_FP4BMM: "0"
+      VLLM_ROCM_USE_AITER_RMSNORM: "0"
+      # libr4d kernels, upstream defaults.
+      RADIANCE_USE_R4D: "1"
+      RADIANCE_USE_R4D_GDN: "1"
+      R4D_ATTN_FP8: "{{ exp.r4d_attn_fp8 }}"
+      RADIANCE_R4D_REPORT: "1"
+      RADIANCE_USE_R4D_AR: "1"
+      RADIANCE_USE_R4D_AR_QUANT: "1"
+      RADIANCE_SKINNY_GEMM: "1"
+      RADIANCE_GDN_META: "1"
+      RADIANCE_GDN_MERGE_INPROJ: "1"
+      RADIANCE_GDN_FUSED_UPDATE: "1"
+      RADIANCE_GDN_FUSED_MAX_ITEMS: "32"
+      RADIANCE_GDN_SHARED_BUILD: "1"
+      RADIANCE_TOPK_TRITON_MIN_ROWS: "1"
+      RADIANCE_TOPK_COMPOSITE: "1"
+      RADIANCE_TOPK_COMPOSITE_KCAP: "64"
+      # Weight format. `auto` lets the Quark checkpoint select its own method.
+      RADIANCE_WEIGHT_QUANTIZATION: "{{ 'auto' if mxfp4 else 'fp8' }}"
+      RADIANCE_MXFP4: "{{ '1' if mxfp4 else '0' }}"
+      RADIANCE_MXFP4_W4A8: "{{ '1' if mxfp4 else '0' }}"
+      RADIANCE_MXFP4_W4A8_MIN_M: "0"
+      RADIANCE_MXFP4_DECODE_MAX_M: "64"
+      RADIANCE_MXFP4_TN4_MIN_M: "2048"
+      RADIANCE_MXFP4_EPIFAST: "1"
+      RADIANCE_MXFP4_WPERM: "{{ '1' if mxfp4 else '0' }}"
+      RADIANCE_MXFP4_DECODE_NT: "{{ '1' if mxfp4 else '0' }}"
+      RADIANCE_MXFP4_A_TILED_MIN_M: "0"
+      # Experimental tiers, see vllm_experimental in group_vars.
+      RADIANCE_GDN_NORM_QUANT: "{{ exp.gdn_norm_quant | ternary('1', '0') }}"
+      RADIANCE_NORMQUANT_FUSION: "{{ exp.normquant_fusion | ternary('1', '0') }}"
+      RADIANCE_FP8_STREAM: "{{ exp.fp8_stream | ternary('1', '0') }}"
+      RADIANCE_QUARK_BF16_MTP: "{{ exp.quark_bf16_mtp | ternary('1', '0') }}"
+      RADIANCE_FAST_DRAFT: "{{ exp.fast_draft | ternary('1', '0') }}"
+      RADIANCE_SPECULATIVE_CONFIG: '{{ exp.speculative_config }}'
+      RADIANCE_COMPILATION_CONFIG: '{{ exp.compilation_config }}'
+      RADIANCE_KV_OFFLOADING_SIZE: "{{ exp.kv_offloading_size }}"
+      RADIANCE_KV_OFFLOAD_PIN_POLICY: "auto"
+      RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB: "0"
+      VLLM_USE_V2_MODEL_RUNNER: "{{ exp.v2_model_runner | ternary('1', '0') }}"
+      # Remaining upstream defaults.
+      RADIANCE_AR_MAX_KB: "49152"
+      RADIANCE_AR_QUANT_MIN_KB: "128"
+      RADIANCE_AR_QNT: "1024"
+      RADIANCE_AR_QNB: "96"
+      RADIANCE_KV_GROUP_OPT: "1"
+      RADIANCE_FUSE_RMS_QUANT: "1"
+      RADIANCE_NUMA_BIND: ""
+      RADIANCE_DYNAMIC_DRAFT: "1"
+      RADIANCE_DRAFT_SCHEDULE: "1:8,2:7,4:6,8:5,16:4"
+      RADIANCE_DRAFT_TAU: "0.28"
+      RADIANCE_DRAFT_RERANK: "64"
+      RADIANCE_DFLASH_SELECTOR_TOPK: ""
+      RADIANCE_VERIFY_HEAD: "1"
+      RADIANCE_DYNAMIC_WIDTH: "1"
+      RADIANCE_DYNW_MIN_BATCH: "5"
+      RADIANCE_TUNABLEOP_MODE: "off"
+      RADIANCE_TUNABLEOP_CACHE_DIR: /cache/tunableop
+      RADIANCE_TUNABLEOP_NAMESPACE: ""
+      RADIANCE_FP8_KV_SCALES: ""
+      RADIANCE_FP8_KV_SCALES_VERIFY: "1"
+      NCCL_PROTO: Simple
+      TORCHINDUCTOR_COMPILE_THREADS: "4"
+      # Persistent JIT/compile caches (host: {{ llm_engine_cache_dir }}). The
+      # entrypoint appends a per-mode namespace, so switching weight format or
+      # experimental tiers never reuses the wrong graphs.
+      VLLM_CACHE_ROOT: /cache/vllm
+      TORCHINDUCTOR_CACHE_DIR: /cache/inductor
+      TRITON_CACHE_DIR: /cache/triton
+      AITER_ROOT_DIR: /cache/aiter
+      TRITON_CACHE_AUTOTUNING: "1"
+      HF_HOME: /cache/huggingface
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    # The image runs as root, so no render/video group_add is needed.
+    cap_add:
+      - SYS_PTRACE
+      - SYS_NICE
+    security_opt:
+      - seccomp=unconfined
+    # TP workers share tensors through /dev/shm; host IPC removes the 64 MB cap.
+    ipc: host
+    ulimits:
+      memlock: -1
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_api_port }}:8000"
+    volumes:
+      - "{{ llm_models_dir }}:/models:ro"
+      - "{{ llm_engine_cache_dir }}:/cache"
+    networks:
+      llm:
+        aliases:
+          - "{{ llm_backend_alias }}"
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 1800s
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"

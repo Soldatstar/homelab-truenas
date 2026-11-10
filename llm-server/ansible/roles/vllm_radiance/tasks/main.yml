@@ -1,0 +1,81 @@
+---
+- name: Assert a sane serving profile
+  ansible.builtin.assert:
+    that:
+      - llm_profile in llm_profiles
+      - llm_profile_settings.max_num_seqs | int >= 2
+      - llm_model_weight_format in ['mxfp4', 'fp8']
+    fail_msg: >-
+      llm_profile must be one of {{ llm_profiles.keys() | list }}, max_num_seqs must be
+      at least 2, and llm_model_weight_format must be mxfp4 or fp8.
+
+- name: Create the vllm-radiance project and cache directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ llm_base_dir }}/vllm-radiance"
+    - "{{ llm_engine_cache_dir }}"
+
+- name: Write the vllm-radiance secrets file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/vllm-radiance/vllm.env"
+    content: |
+      VLLM_API_KEY={{ vault_llm_api_key }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Template the vllm-radiance compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/vllm-radiance/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start vllm-radiance (recreates the container when the profile changes)
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/vllm-radiance"
+    state: present
+    pull: missing
+    remove_orphans: true
+
+- name: Wait for the model to load
+  when: not ansible_check_mode
+  block:
+    - name: Wait for the vLLM health endpoint
+      ansible.builtin.uri:
+        url: "http://{{ llm_lan_ip }}:{{ llm_api_port }}/health"
+        status_code: 200
+      register: vllm_radiance_health
+      until: vllm_radiance_health.status == 200
+      retries: "{{ (vllm_health_timeout_minutes | int) * 4 }}"
+      delay: 15
+  rescue:
+    - name: Collect the last container log lines
+      ansible.builtin.command:
+        argv: [docker, logs, --tail, "60", vllm-radiance]
+      register: vllm_radiance_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Fail loudly with next steps
+      ansible.builtin.fail:
+        msg: |
+          vllm-radiance did not become healthy within {{ vllm_health_timeout_minutes }} minutes.
+          Weight format: {{ llm_model_weight_format }}, profile: {{ llm_profile }}
+          ({{ llm_profile_settings.max_model_len }} x {{ llm_profile_settings.max_num_seqs }}).
+
+          If the log shows an MXFP4/Quark load or kernel error, switch to the native FP8
+          checkpoint (commented block in group_vars/llm/main.yml). If it shows an
+          out-of-memory error during graph capture, use llm_profile: chat (upstream's
+          qualified profile) or lower vllm_gpu_memory_utilization. Other cases:
+          docs/troubleshooting.md, including the llama.cpp fallback playbook.
+
+          Last log lines:
+          {{ (vllm_radiance_logs.stdout_lines | default([]) + vllm_radiance_logs.stderr_lines | default([])) | join('\n') }}
