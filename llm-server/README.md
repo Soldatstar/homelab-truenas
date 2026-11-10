@@ -200,9 +200,32 @@ vllm-radiance, also read the `VERSION` file of the matching upstream commit and 
 `vllm_radiance_expected_version`; the smoke test compares it with the image. Then run
 `site.yml` and `smoke-test.yml`. To roll back, restore the previous digest and re-run.
 
-**Model.** Change `llm_model_repo`, `llm_model_revision`, `llm_model_dirname` and
-`llm_model_weight_format`, then run `site.yml`. Old checkpoints stay in `/srv/llm/models`
-until you delete them.
+**Model.** Add or change an entry in `llm_models` (repo, revision, dirname, weight format,
+GPU memory share, default profile), then run `site.yml --tags models,engine`. Every entry is
+downloaded to `/srv/llm/models` and stays there until you delete it.
+
+### Switching between models
+
+Only one model is loaded at a time (the MXFP4 and FP8 27B together would leave almost no
+KV cache). Two entries are configured:
+
+| `llm_model` | Weights | Default profile | Status |
+|---|---|---|---|
+| `mxfp4` (default) | 18.4 GiB | `chat`: 131,072 x 4 | upstream-qualified, tested here |
+| `fp8` | 28.75 GiB | `chat-fp8`: 131,072 x 2 | **untested here**; higher precision, smaller KV pool |
+
+```bash
+ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags models,engine -e llm_model=fp8
+```
+
+The engine restarts and Open WebUI and Claude Code are unavailable while the model loads
+(minutes with warm caches; the first start of a weight format compiles kernels again). To
+make it permanent, change `llm_model` in `inventory/group_vars/llm/main.yml`.
+
+Clients keep working without changes: the served name `qwen3.8-27b` and the alias
+`claude-local` stay the same. A third name, `qwen3.8-27b-mxfp4` or `qwen3.8-27b-fp8`,
+appears in Open WebUI's model list and shows which one is loaded. Switching is a redeploy,
+not a dropdown choice in the UI or in Claude Code.
 
 **Kernel and firmware.** Held on purpose. Procedure: [docs/kernel-update.md](docs/kernel-update.md).
 

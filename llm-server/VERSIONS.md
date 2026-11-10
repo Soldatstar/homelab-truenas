@@ -8,6 +8,7 @@ Recorded 2026-11-10. Every decision in this folder traces back to one of these.
 |---|---|---|
 | vllm-radiance | Docker Hub `1.0.387` = `sha-1855cd8cdb3b`, pushed 2026-09-23. `VERSION` at that commit: `1.1.0-rc1.vllm0.30.0` | `sha256:c0e8f375de5a...` |
 | Model | `amd/Qwen3.8-27B-Quark-AWQ-MXFP4`, last modified 2026-11-03, public, Apache-2.0 | commit `93245f7c00f1...` |
+| Model (alternative) | `Qwen/Qwen3.8-27B-FP8`, public, 27.8B parameters, modified 2026-11-07 | commit `c3a462cc3d38...` |
 | Open WebUI | v0.13.3 | `sha256:46b59158e655...` |
 | SearXNG | `latest` on 2026-11-10 | `sha256:287af61f1a13...` |
 | Postgres (optional) | 17 | `sha256:ff87138949ad...` |

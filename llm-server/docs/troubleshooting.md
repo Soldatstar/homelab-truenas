@@ -39,14 +39,17 @@ then re-run `site.yml --tags engine` (the next start recompiles).
 ## FP8 fallback checkpoint
 
 Native FP8 weights avoid the MXFP4 kernels entirely. They are larger (28.75 GiB), so the
-context budget shrinks: upstream measured 128K x 2 or 256K x 1 at 85% allocation. Upstream
-does not name a public repository for its FP8 target, so you have to choose one:
+context budget shrinks: upstream measured 128K x 2 or 256K x 1 at 85% allocation. The FP8
+checkpoint (`Qwen/Qwen3.8-27B-FP8`) is already configured as the `fp8` entry of `llm_models`
+and downloaded alongside the default, so switching is one command:
 
-1. In `group_vars/llm/main.yml`, fill in the commented FP8 block (`llm_model_repo`,
-   `llm_model_revision`, `llm_model_dirname`, `llm_model_weight_format: fp8`,
-   `vllm_gpu_memory_utilization: 0.85`).
-2. Set a profile that fits, for example `chat` with `max_num_seqs: 2`.
-3. Run `site.yml`, then `smoke-test.yml`.
+```bash
+ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags models,engine -e llm_model=fp8
+ansible-playbook playbooks/smoke-test.yml --ask-become-pass --ask-vault-pass
+```
+
+It uses the `chat-fp8` profile (131,072 x 2, 85% GPU memory) automatically. The first start
+compiles kernels again for the new weight format.
 
 ## Slow or stalling requests
 

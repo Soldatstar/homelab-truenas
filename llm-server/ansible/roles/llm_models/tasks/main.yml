@@ -1,6 +1,6 @@
 ---
 # The vllm-radiance image has no download logic; it only reads /models.
-# Weights are fetched into a plain directory with huggingface_hub.
+# Weights are fetched into plain directories with huggingface_hub.
 
 - name: Install huggingface_hub into a dedicated virtualenv
   ansible.builtin.pip:
@@ -16,18 +16,24 @@
     group: root
     mode: "0755"
 
-- name: Download the model checkpoint (about 20 GB on first run)
+# Downloads every configured model (about 20 GB and 29 GB) so a switch needs no download.
+# Set llm_models_download_all: false to fetch only the selected one.
+- name: Download the model checkpoints
   ansible.builtin.command:
     argv:
       - "{{ llm_base_dir }}/hf-venv/bin/python"
       - "{{ llm_base_dir }}/bin/hf_snapshot.py"
-      - "{{ llm_model_repo }}"
-      - "{{ llm_model_revision }}"
-      - "{{ llm_models_dir }}/{{ llm_model_dirname }}"
-    creates: "{{ llm_models_dir }}/{{ llm_model_dirname }}/.complete-{{ llm_model_revision }}"
+      - "{{ item.value.repo }}"
+      - "{{ item.value.revision }}"
+      - "{{ llm_models_dir }}/{{ item.value.dirname }}"
+    creates: "{{ llm_models_dir }}/{{ item.value.dirname }}/.complete-{{ item.value.revision }}"
   environment:
     HF_HOME: "{{ llm_hf_cache_dir }}"
     HF_TOKEN: "{{ vault_hf_token | default('') }}"
+  loop: "{{ llm_models | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: llm_models_download_all | bool or item.key == llm_model
   async: 21600
   poll: 30
   no_log: true

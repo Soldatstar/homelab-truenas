@@ -40,25 +40,44 @@ llm_backend_alias: llm-backend # DNS name of the active engine on the Docker net
 # radiance_engine = StillDeadcode/radiance (optional, untested skeleton)
 llm_engine: vllm_radiance
 
-llm_model_repo: amd/Qwen3.8-27B-Quark-AWQ-MXFP4
-# Commit of the HF repo at the time of writing (2026-11-10). Bump deliberately.
-llm_model_revision: 93245f7c00f1a8964b66a97c6e02e2fd09080be4
-llm_model_dirname: Qwen3.8-27B-Quark-AWQ-MXFP4
-llm_model_weight_format: mxfp4 # mxfp4 | fp8
+# Which model is loaded. Only ONE model runs at a time (both would need 47 GiB of
+# weights and leave almost no KV cache). Switch with:
+#   ansible-playbook playbooks/site.yml ... --tags models,engine -e llm_model=fp8
+llm_model: mxfp4
 
-# FP8 alternative (28.75 GiB weights; upstream capacity 128K x2 / 256K x1 at
-# gpu_memory_utilization 0.85). Upstream names no public HF repo for it, so
-# fill in the repo yourself before using it:
-# llm_model_repo: <owner>/<native-fp8-qwen3.8-27b-checkpoint>
-# llm_model_revision: <commit sha>
-# llm_model_dirname: <directory name>
-# llm_model_weight_format: fp8
-# vllm_gpu_memory_utilization: 0.85
-# llm_profile: chat   # and lower max_num_seqs/max_model_len per the FP8 table
+# Every entry here is downloaded (llm_models_download_all), so switching does not wait
+# for a download. Revisions are Hugging Face commits at the time of writing (2026-11-10);
+# bump them deliberately.
+llm_models:
+  mxfp4: # 18.4 GiB weights, leaves the largest KV pool; upstream-qualified
+    repo: amd/Qwen3.8-27B-Quark-AWQ-MXFP4
+    revision: 93245f7c00f1a8964b66a97c6e02e2fd09080be4
+    dirname: Qwen3.8-27B-Quark-AWQ-MXFP4
+    weight_format: mxfp4
+    gpu_util: 0.90
+    profile: chat
+  fp8: # 28.75 GiB weights, higher precision, smaller KV pool. UNTESTED here: upstream
+    # measured a different FP8 checkpoint (a "heretic-ara" variant), though it lists the
+    # official Qwen3.8-27B-FP8 among its tested setups.
+    repo: Qwen/Qwen3.8-27B-FP8
+    revision: c3a462cc3d38cf351f3b26cbd763469eeb74ef81
+    dirname: Qwen3.8-27B-FP8
+    weight_format: fp8
+    gpu_util: 0.85
+    profile: chat-fp8
+llm_models_download_all: true
 
+llm_model_repo: "{{ llm_models[llm_model].repo }}"
+llm_model_revision: "{{ llm_models[llm_model].revision }}"
+llm_model_dirname: "{{ llm_models[llm_model].dirname }}"
+llm_model_weight_format: "{{ llm_models[llm_model].weight_format }}" # mxfp4 | fp8
+
+# Clients use these names, which stay the same whichever model is loaded, so Open WebUI and
+# Claude Code need no change when you switch. The third name shows what is actually loaded.
 llm_served_model_name: qwen3.8-27b
 llm_served_model_aliases:
   - claude-local
+  - "qwen3.8-27b-{{ llm_model }}"
 
 # ---------------------------------------------------------------------------
 # Serving profile. max_num_seqs is an admission ceiling, not a reservation:
@@ -67,20 +86,27 @@ llm_served_model_aliases:
 # Never use max_num_seqs 1: Open WebUI background tasks and Claude Code's
 # small-model/subagent calls need their own sequences.
 # ---------------------------------------------------------------------------
-llm_profile: chat
+# The default profile follows the selected model; override with -e llm_profile=long.
+llm_profile: "{{ llm_models[llm_model].profile }}"
 llm_profiles:
-  chat: # upstream-qualified production profile (prefix cache + align)
+  chat: # MXFP4: upstream-qualified production profile (prefix cache + align)
     max_model_len: 131072
     max_num_seqs: 4
-  long: # UNTESTED: upstream ran 262144 only with prefix caching off
+  long: # MXFP4, UNTESTED: upstream ran 262144 only with prefix caching off
     max_model_len: 262144
     max_num_seqs: 4
-  coding: # UNTESTED with prefix caching on, like "long" but fewer sequences
+  coding: # MXFP4, UNTESTED with prefix caching on, like "long" but fewer sequences
+    max_model_len: 262144
+    max_num_seqs: 2
+  chat-fp8: # FP8: upstream's FP8 capacity table lists 128K x 2 (85%, other checkpoint)
+    max_model_len: 131072
+    max_num_seqs: 2
+  long-fp8: # FP8, UNTESTED: the KV pool holds about one full 256K sequence
     max_model_len: 262144
     max_num_seqs: 2
 llm_profile_settings: "{{ llm_profiles[llm_profile] }}"
 
-vllm_gpu_memory_utilization: 0.90
+vllm_gpu_memory_utilization: "{{ llm_models[llm_model].gpu_util }}"
 vllm_max_num_batched_tokens: 4096
 vllm_hip_visible_devices: "0,1"
 # Qwen3.8's template accepts only low, medium and xhigh (upstream default: xhigh).
@@ -166,7 +192,7 @@ litellm_port: 4000
 # Dashboard: Prometheus + Grafana on this host, with a ready-made dashboard (tokens/s,
 # requests, KV cache, latency, GPU temperature/fan/VRAM). Store the Grafana admin password
 # as vault_grafana_admin_password, then set this to true. Grafana: http://<llm_lan_ip>:3001
-llm_dashboard_enabled: false
+llm_dashboard_enabled: true
 llm_grafana_port: 3001
 llm_prometheus_retention: 30d
 
