@@ -1,0 +1,60 @@
+---
+# OPTIONAL and UNTESTED skeleton for the standalone radiance engine
+# (codeberg.org/StillDeadcode/radiance). Selected with llm_engine: radiance_engine.
+#
+# It needs a model in radiance's own .rad container format. Converting one
+# (rad-convert) is a manual step this role does not automate; see README.
+# Tool calling for the Qwen models is not documented upstream, so run the
+# smoke test before relying on it for Claude Code.
+
+- name: Assert the .rad model file is configured
+  ansible.builtin.assert:
+    that:
+      - radiance_engine_model_file is defined
+      - radiance_engine_model_file | length > 0
+    fail_msg: >-
+      Set radiance_engine_model_file to a .rad file name inside
+      {{ llm_models_dir }}/rad (for example qwen3.8-27b-mxfp4.rad).
+
+- name: Check that the .rad model exists
+  ansible.builtin.stat:
+    path: "{{ llm_models_dir }}/rad/{{ radiance_engine_model_file }}"
+  register: radiance_engine_model
+
+- name: Fail when the .rad model is missing
+  ansible.builtin.assert:
+    that: radiance_engine_model.stat.exists
+    fail_msg: "{{ llm_models_dir }}/rad/{{ radiance_engine_model_file }} not found; convert it with rad-convert first."
+
+- name: Create the radiance project directory
+  ansible.builtin.file:
+    path: "{{ llm_base_dir }}/radiance"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the radiance secrets file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/radiance/radiance.env"
+    content: |
+      RADIANCE_API_KEY={{ vault_llm_api_key }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Template the radiance compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/radiance/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start radiance
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/radiance"
+    state: present
+    pull: missing
+    remove_orphans: true

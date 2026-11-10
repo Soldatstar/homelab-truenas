@@ -1,0 +1,50 @@
+# Managed by Ansible (radiance_engine). UNTESTED skeleton.
+# Derived from upstream deploy/compose/common.yaml + qwen3.8-27b-mxfp4.yaml
+# (StillDeadcode/radiance main, 2026-11-05). Differences from upstream:
+#   - bridge network with a LAN-bound published port instead of host networking,
+#     so the DOCKER-USER firewall and the internal backend alias keep working;
+#     hence --host 0.0.0.0 instead of upstream's "--host ::"
+#   - runs as root like the vllm-radiance image, so no group_add
+#   - max-num-seqs / max-model-len follow llm_profile instead of 32 / 200000
+name: radiance
+services:
+  radiance:
+    image: "{{ radiance_engine_image }}"
+    container_name: radiance
+    restart: unless-stopped
+    init: true
+    command: >
+      --model /models/{{ radiance_engine_model_file }}
+      --host 0.0.0.0 --port 8000 --api-key-env RADIANCE_API_KEY
+      --tp 2 --max-num-seqs {{ llm_profile_settings.max_num_seqs }}
+      --max-model-len {{ [llm_profile_settings.max_model_len, 200000] | min }}
+      --kv-cache-dtype fp8
+    env_file:
+      - radiance.env
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    security_opt:
+      - seccomp=unconfined
+    ulimits:
+      memlock: -1
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_api_port }}:8000"
+    volumes:
+      - "{{ llm_models_dir }}/rad:/models:ro"
+    networks:
+      llm:
+        aliases:
+          - "{{ llm_backend_alias }}"
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15m
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"
