@@ -126,6 +126,11 @@ host_prep_unattended_blacklist:
 # ---------------------------------------------------------------------------
 # Open WebUI
 # ---------------------------------------------------------------------------
+# Extra browser origins allowed besides https://<llm_chat_domain>. Needed when you open
+# Open WebUI by its LAN address instead of through the proxy; set to [] to allow the
+# proxy domain only.
+openwebui_extra_origins:
+  - "http://{{ llm_lan_ip }}:{{ llm_webui_port }}"
 openwebui_postgres_enabled: false # SQLite is plenty for a household
 openwebui_searxng_enabled: true # web search, no VRAM
 openwebui_rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2 # runs on CPU
