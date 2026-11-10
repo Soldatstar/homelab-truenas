@@ -269,6 +269,8 @@ is independent of which GPU model is loaded. Claude Code does not use it.
   a CPU can handle. Rough estimate, not measured here: 15–25 tokens/s for replies.
 - **Weak spot:** reading long input on a CPU takes a few hundred tokens per second, so a web
   search result of several thousand tokens may take 10–30 s before the answer starts.
+- **Thinking is off** (`llm_cpu_thinking: false`): Qwen3.6 reasons by default, which is far too
+  slow on a CPU. The Smart GPU model keeps its reasoning (`vllm_default_reasoning_effort`).
 - **CPU use:** 24 threads for decoding, 32 for prompt processing, and a hard cap of 32 CPUs
   for the container so the GPU engine always keeps enough CPU. Context is 32,768 tokens per
   request, 2 requests at once.

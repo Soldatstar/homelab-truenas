@@ -26,6 +26,10 @@ services:
       - "{{ llm_cpu_parallel * llm_cpu_ctx_per_slot }}"
       # Chat template from the model file, needed for tool calls.
       - --jinja
+      # Qwen3.6 thinks unless the template variable enable_thinking is false. A request can
+      # still override this default with its own chat_template_kwargs.
+      - --chat-template-kwargs
+      - '{"enable_thinking": {{ llm_cpu_thinking | bool | lower }}}'
       - --no-webui
     env_file:
       - llm-cpu.env

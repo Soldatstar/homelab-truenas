@@ -199,6 +199,9 @@ llm_cpu_threads_batch: 32 # prompt processing
 llm_cpu_cpu_limit: 32 # hard cap for the container, so the GPU engine keeps its CPU
 llm_cpu_parallel: 2 # concurrent requests
 llm_cpu_ctx_per_slot: 32768 # context per request (the total is split between the slots)
+# Thinking before answering is far too slow on a CPU, so it is off by default. Set true to
+# let the model reason (better answers on hard questions, minutes of waiting).
+llm_cpu_thinking: false
 # Send Open WebUI's background jobs (titles, tags, follow-ups, search queries) to this
 # model instead of the GPU model, so they stop taking GPU sequences from your chat.
 llm_cpu_use_for_tasks: false
