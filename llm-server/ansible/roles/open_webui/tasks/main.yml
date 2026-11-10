@@ -1,0 +1,94 @@
+---
+- name: Create Open WebUI directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ llm_base_dir }}/open-webui"
+    - "{{ llm_base_dir }}/open-webui/searxng"
+    - "{{ llm_data_dir }}/open-webui"
+
+- name: Write the Open WebUI environment file
+  ansible.builtin.template:
+    src: open-webui.env.j2
+    dest: "{{ llm_base_dir }}/open-webui/open-webui.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Write the Postgres environment file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/open-webui/postgres.env"
+    content: |
+      POSTGRES_DB=openwebui
+      POSTGRES_USER=openwebui
+      POSTGRES_PASSWORD={{ vault_postgres_password }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: openwebui_postgres_enabled
+
+- name: Write the SearXNG settings
+  ansible.builtin.template:
+    src: searxng-settings.yml.j2
+    dest: "{{ llm_base_dir }}/open-webui/searxng/settings.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  no_log: true
+  when: openwebui_searxng_enabled
+  notify: Restart searxng
+
+- name: Template the Open WebUI compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/open-webui/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start Open WebUI
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/open-webui"
+    state: present
+    pull: missing
+    remove_orphans: true
+
+- name: Bootstrap the admin account
+  when: not ansible_check_mode
+  block:
+    - name: Wait for Open WebUI
+      ansible.builtin.uri:
+        url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/health"
+        status_code: 200
+      register: open_webui_health
+      until: open_webui_health.status == 200
+      retries: 60
+      delay: 10
+
+    - name: Read the Open WebUI onboarding state
+      ansible.builtin.uri:
+        url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/api/config"
+        return_content: true
+      register: open_webui_config
+
+    # With no users yet, the first signup becomes the admin, even though
+    # public signup is disabled for everyone after that.
+    - name: Create the admin account on a fresh install
+      ansible.builtin.uri:
+        url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/api/v1/auths/signup"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ vault_webui_admin_name }}"
+          email: "{{ vault_webui_admin_email }}"
+          password: "{{ vault_webui_admin_password }}"
+        status_code: 200
+      no_log: true
+      changed_when: true
+      when: open_webui_config.json.onboarding | default(false)

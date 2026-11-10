@@ -1,0 +1,66 @@
+# Managed by Ansible (open_webui). Do not edit on the host.
+name: open-webui
+services:
+  open-webui:
+    image: "{{ openwebui_image }}"
+    container_name: open-webui
+    restart: unless-stopped
+    env_file:
+      - open-webui.env
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_webui_port }}:8080"
+    volumes:
+      - "{{ llm_data_dir }}/open-webui:/app/backend/data"
+    networks:
+      - llm
+{% if openwebui_postgres_enabled %}
+    depends_on:
+      postgres:
+        condition: service_healthy
+{% endif %}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+{% if openwebui_postgres_enabled %}
+
+  postgres:
+    image: "{{ postgres_image }}"
+    container_name: open-webui-postgres
+    restart: unless-stopped
+    env_file:
+      - postgres.env
+    volumes:
+      - "{{ llm_data_dir }}/open-webui-postgres:/var/lib/postgresql/data"
+    networks:
+      - llm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openwebui -d openwebui"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+{% endif %}
+{% if openwebui_searxng_enabled %}
+
+  searxng:
+    image: "{{ searxng_image }}"
+    container_name: searxng
+    restart: unless-stopped
+    volumes:
+      - "{{ llm_base_dir }}/open-webui/searxng/settings.yml:/etc/searxng/settings.yml:ro"
+    networks:
+      - llm
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+{% endif %}
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"
