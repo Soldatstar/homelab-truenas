@@ -1,0 +1,121 @@
+---
+# End-to-end checks against the running stack. Changes nothing on the host.
+#   ansible-playbook playbooks/smoke-test.yml --ask-become-pass --ask-vault-pass
+- name: Smoke-test the local LLM server
+  hosts: llm
+  become: true
+  gather_facts: false
+  vars:
+    smoke_api_url: "http://{{ llm_lan_ip }}:{{ llm_api_port }}"
+    smoke_webui_url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}"
+    smoke_container: "{{ {'vllm_radiance': 'vllm-radiance', 'radiance_engine': 'radiance'}[llm_engine] }}"
+  tasks:
+    - name: Read the image's radiance version
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ smoke_container }}", cat, /opt/radiance_version]
+      register: smoke_version
+      changed_when: false
+      when: llm_engine == 'vllm_radiance'
+
+    - name: Assert the pinned image is the expected build
+      ansible.builtin.assert:
+        that: smoke_version.stdout | trim == vllm_radiance_expected_version
+        fail_msg: >-
+          Image reports '{{ smoke_version.stdout | trim }}', expected '{{ vllm_radiance_expected_version }}'.
+          The digest in images.yml and vllm_radiance_expected_version disagree.
+      when: llm_engine == 'vllm_radiance'
+
+    - name: Check both GPUs are visible inside the container
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ smoke_container }}", sh, -c, "ls /dev/kfd /dev/dri/renderD* | wc -l"]
+      register: smoke_devices
+      changed_when: false
+      failed_when: smoke_devices.stdout | trim | int < 3
+
+    - name: Ask the inference process how many GPUs it sees (informational)
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ smoke_container }}", python3, -c, "import torch; print(torch.cuda.device_count())"]
+      register: smoke_torch
+      changed_when: false
+      failed_when: smoke_torch.rc == 0 and smoke_torch.stdout | trim | int != 2
+      when: llm_engine == 'vllm_radiance'
+
+    - name: Run the API smoke tests (chat, tools, concurrency, /v1/messages, prefix cache)
+      ansible.builtin.script:
+        cmd: >-
+          {{ playbook_dir }}/../../scripts/smoke_test.py
+          --base-url {{ smoke_api_url }}
+          --model {{ llm_served_model_name }}
+          {% for alias in llm_served_model_aliases %}--alias {{ alias }} {% endfor %}
+          {% if litellm_enabled %}--messages-base-url http://{{ llm_lan_ip }}:{{ litellm_port }} --messages-key-env LITELLM_KEY {% endif %}
+          {% if not vllm_prefix_caching %}--skip-prefix-cache{% endif %}
+        executable: python3
+      environment:
+        LLM_API_KEY: "{{ vault_llm_api_key }}"
+        LITELLM_KEY: "{{ vault_litellm_master_key | default('') }}"
+      register: smoke_api
+      changed_when: false
+      failed_when: false
+
+    - name: Show the API smoke test report
+      ansible.builtin.debug:
+        msg: "{{ smoke_api.stdout_lines + smoke_api.stderr_lines | default([]) }}"
+
+    - name: Fail when any API check failed
+      ansible.builtin.assert:
+        that: smoke_api.rc == 0
+        fail_msg: >-
+          API smoke tests failed, see the report above. A failing chat or tool check
+          right after a model or image change means: fall back to the FP8 checkpoint
+          or the previous digest (docs/troubleshooting.md). A failing /v1/messages
+          check alone means: set litellm_enabled: true.
+
+    - name: Check that the API rejects requests without the key
+      ansible.builtin.uri:
+        url: "{{ smoke_api_url }}/v1/models"
+        status_code: 401
+
+    - name: Check that the API accepts requests with the key
+      ansible.builtin.uri:
+        url: "{{ smoke_api_url }}/v1/models"
+        headers:
+          Authorization: "Bearer {{ vault_llm_api_key }}"
+        status_code: 200
+      no_log: true
+
+    - name: Check Open WebUI health
+      ansible.builtin.uri:
+        url: "{{ smoke_webui_url }}/health"
+        status_code: 200
+
+    - name: Sign in to Open WebUI as the admin
+      ansible.builtin.uri:
+        url: "{{ smoke_webui_url }}/api/v1/auths/signin"
+        method: POST
+        body_format: json
+        body:
+          email: "{{ vault_webui_admin_email }}"
+          password: "{{ vault_webui_admin_password }}"
+        status_code: 200
+      register: smoke_signin
+      no_log: true
+
+    - name: Check Open WebUI lists the local model
+      ansible.builtin.uri:
+        url: "{{ smoke_webui_url }}/api/models"
+        headers:
+          Authorization: "Bearer {{ smoke_signin.json.token }}"
+        return_content: true
+      register: smoke_webui_models
+      failed_when: llm_served_model_name not in (smoke_webui_models.json.data | map(attribute='id') | list)
+
+    - name: Check that public signup is closed
+      ansible.builtin.uri:
+        url: "{{ smoke_webui_url }}/api/v1/auths/signup"
+        method: POST
+        body_format: json
+        body:
+          name: smoke-test
+          email: smoke-test@example.invalid
+          password: "{{ lookup('ansible.builtin.password', '/dev/null', length=24) }}"
+        status_code: [400, 403]

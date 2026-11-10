@@ -1,0 +1,28 @@
+---
+# OPT-IN convenience: passwordless sudo for the admin user, so later runs do
+# not need --ask-become-pass. Not part of site.yml. Trade-off: anyone holding
+# your SSH key is root on the host.
+#   ansible-playbook playbooks/sudo-nopasswd.yml --ask-become-pass
+#   ansible-playbook playbooks/sudo-nopasswd.yml --ask-become-pass -e sudo_nopasswd_state=absent
+- name: Manage passwordless sudo for the admin user
+  hosts: llm
+  become: true
+  gather_facts: false
+  vars:
+    sudo_nopasswd_state: present
+  tasks:
+    - name: Manage the sudoers drop-in
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/90-{{ ansible_user }}-nopasswd"
+        content: "{{ ansible_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+      when: sudo_nopasswd_state == 'present'
+
+    - name: Remove the sudoers drop-in
+      ansible.builtin.file:
+        path: "/etc/sudoers.d/90-{{ ansible_user }}-nopasswd"
+        state: absent
+      when: sudo_nopasswd_state != 'present'

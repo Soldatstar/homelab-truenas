@@ -1,0 +1,53 @@
+---
+# Full deployment. Idempotent; safe to re-run.
+#   ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass
+#   ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --check --diff
+- name: Deploy the local LLM server
+  hosts: llm
+  become: true
+  pre_tasks:
+    - name: Read the vault file on the controller
+      ansible.builtin.slurp:
+        src: "{{ inventory_dir }}/group_vars/llm/vault.yml"
+      delegate_to: localhost
+      become: false
+      register: site_vault_file
+      tags: always
+
+    - name: Refuse to run with a plaintext vault
+      ansible.builtin.assert:
+        that: (site_vault_file.content | b64decode).startswith('$ANSIBLE_VAULT')
+        fail_msg: "group_vars/llm/vault.yml is not encrypted. Run: ansible-vault encrypt inventory/group_vars/llm/vault.yml"
+        quiet: true
+      tags: always
+
+    - name: Stop engines other than the selected one
+      ansible.builtin.include_tasks:
+        file: tasks/stop_other_engines.yml
+      vars:
+        site_active_project: "{{ {'vllm_radiance': 'vllm-radiance', 'radiance_engine': 'radiance'}[llm_engine] }}"
+      tags: [engine]
+
+  roles:
+    - role: host_prep
+      tags: [host]
+    - role: docker
+      tags: [docker]
+    - role: llm_firewall
+      tags: [firewall]
+    - role: llm_models
+      tags: [models, engine]
+      when: llm_engine == 'vllm_radiance'
+    - role: vllm_radiance
+      tags: [engine]
+      when: llm_engine == 'vllm_radiance'
+    - role: radiance_engine
+      tags: [engine]
+      when: llm_engine == 'radiance_engine'
+    - role: open_webui
+      tags: [webui]
+    - role: litellm
+      tags: [litellm]
+      when: litellm_enabled
+    - role: llm_monitoring
+      tags: [monitoring]

@@ -1,0 +1,16 @@
+---
+# Only one engine may hold the GPUs and the API port. Expects site_active_project.
+- name: Look for other engine deployments
+  ansible.builtin.stat:
+    path: "{{ llm_base_dir }}/{{ item }}/docker-compose.yml"
+  loop: "{{ ['vllm-radiance', 'radiance', 'llamacpp'] | difference([site_active_project]) }}"
+  register: site_other_engines
+
+- name: Stop other engines
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/{{ item.item }}"
+    state: absent
+  loop: "{{ site_other_engines.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
