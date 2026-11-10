@@ -47,3 +47,6 @@ __pycache__/
 *.retry
 .vault-pass
 .vault_pass
+
+# Ansible vault with real secrets (the .example is tracked)
+llm-server/ansible/inventory/group_vars/llm/vault.yml
