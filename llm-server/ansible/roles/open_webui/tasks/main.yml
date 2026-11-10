@@ -1,4 +1,13 @@
 ---
+- name: Assert the OIDC client secret is in the vault when OIDC is enabled
+  ansible.builtin.assert:
+    that: vault_webui_oauth_client_secret is defined and vault_webui_oauth_client_secret | length > 0
+    fail_msg: >-
+      openwebui_oauth_enabled is true but vault_webui_oauth_client_secret is missing.
+      Add it with: ansible-vault edit inventory/group_vars/llm/vault.yml
+    quiet: true
+  when: openwebui_oauth_enabled
+
 - name: Create Open WebUI directories
   ansible.builtin.file:
     path: "{{ item }}"

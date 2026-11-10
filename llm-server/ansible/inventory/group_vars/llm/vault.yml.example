@@ -17,6 +17,9 @@ vault_webui_admin_name: "Viktor"
 vault_webui_admin_email: "admin@example.com"
 vault_webui_admin_password: "CHANGE_ME"
 
+# Authentik OIDC client secret (only read when openwebui_oauth_enabled is true)
+vault_webui_oauth_client_secret: "CHANGE_ME"
+
 # Optional components (only read when the matching toggle is on)
 vault_searxng_secret: "CHANGE_ME"
 vault_postgres_password: "CHANGE_ME"

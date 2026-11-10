@@ -139,6 +139,14 @@ openwebui_title_generation: true
 openwebui_tags_generation: true
 openwebui_follow_up_generation: true
 openwebui_autocomplete_generation: false # fires on every keystroke pause
+# OIDC login with Authentik. Create an OAuth2/OpenID provider there with the redirect
+# URI https://<llm_chat_domain>/oauth/oidc/callback (strict), then store the client
+# secret as vault_webui_oauth_client_secret and set the flag to true.
+# The container resolves and calls the Authentik host itself, not only your browser.
+openwebui_oauth_enabled: false
+openwebui_oauth_provider_name: Authentik
+openwebui_oauth_client_id: 9yNg8fMA1XOD9Pq70LvdJcZRpumT6Qv4yST5tFzR
+openwebui_oauth_provider_url: https://authentik.viktornote.ch/application/o/open-web-ui/.well-known/openid-configuration
 # Trusted-header SSO (Authentik via NPM Plus). Only safe because the firewall
 # admits only your LAN, so keep the proxy as the sole route to port 3000 (or
 # narrow llm_allowed_sources to the proxy) before enabling this.
