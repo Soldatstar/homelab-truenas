@@ -1,0 +1,16 @@
+# Managed by Ansible (litellm).
+model_list:
+{% for name in [llm_served_model_name] + llm_served_model_aliases %}
+  - model_name: "{{ name }}"
+    litellm_params:
+      model: "openai/{{ llm_served_model_name }}"
+      api_base: "http://{{ llm_backend_alias }}:8000/v1"
+      api_key: os.environ/BACKEND_API_KEY
+{% endfor %}
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 1800
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

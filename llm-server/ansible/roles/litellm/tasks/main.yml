@@ -1,0 +1,46 @@
+---
+# Optional Anthropic -> OpenAI translation proxy. Only needed when the
+# engine's native /v1/messages endpoint fails the smoke test.
+
+- name: Create the LiteLLM project directory
+  ansible.builtin.file:
+    path: "{{ llm_base_dir }}/litellm"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the LiteLLM secrets file
+  ansible.builtin.copy:
+    dest: "{{ llm_base_dir }}/litellm/litellm.env"
+    content: |
+      LITELLM_MASTER_KEY={{ vault_litellm_master_key }}
+      BACKEND_API_KEY={{ vault_llm_api_key }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Template the LiteLLM configuration
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ llm_base_dir }}/litellm/config.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart litellm
+
+- name: Template the LiteLLM compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ llm_base_dir }}/litellm/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start LiteLLM
+  community.docker.docker_compose_v2:
+    project_src: "{{ llm_base_dir }}/litellm"
+    state: present
+    pull: missing
+    remove_orphans: true

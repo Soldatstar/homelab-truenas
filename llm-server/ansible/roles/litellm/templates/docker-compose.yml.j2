@@ -1,0 +1,21 @@
+# Managed by Ansible (litellm). Do not edit on the host.
+name: litellm
+services:
+  litellm:
+    image: "{{ litellm_image }}"
+    container_name: litellm
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file:
+      - litellm.env
+    ports:
+      - "{{ llm_lan_ip }}:{{ litellm_port }}:4000"
+    volumes:
+      - "{{ llm_base_dir }}/litellm/config.yaml:/app/config.yaml:ro"
+    networks:
+      - llm
+
+networks:
+  llm:
+    external: true
+    name: "{{ llm_docker_network }}"
