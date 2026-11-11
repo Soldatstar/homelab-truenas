@@ -65,23 +65,29 @@ node, no IOMMU groups (IOMMU off), both R9700s bound by in-kernel amdgpu (`/dev/
 - Anthropic Messages router (`/v1/messages`) is documented for upstream vLLM from at least
   v0.15, so it should be present in the 0.30 base.
 
-## Not verified
+## Verification status
 
-These are assumptions until `smoke-test.yml` has passed on the host:
+Updated 2026-11-11. The stack is deployed on the host and in use.
 
-1. Nothing here has been executed against the host yet.
-2. `/v1/messages` works in this fork's build, including with `--api-key`.
-3. The `chat` profile (131,072 x 4, prefix caching + align) is upstream's qualified
-   configuration, but was measured on a DFlash2 build; the non-speculative start here is
-   unverified. The `long` and `coding` profiles (262,144) are untested: upstream ran
-   262,144 only with prefix caching off.
-4. Open WebUI v0.13.3 accepts every environment variable used and still allows the first
-   signup to become admin while public signup is off.
+**Confirmed on the host** (smoke test passed for MXFP4; FP8 loads and answers):
+the pinned image starts and serves both Qwen3.8-27B checkpoints on two R9700s; the `chat`
+profile (131,072 x 4, prefix caching + align) starts; chat and tool calls work; the CPU model
+(`llm_cpu_model`) loads, answers, and is listed in Open WebUI; the Open WebUI v0.13.3
+environment variables are accepted and signup is closed; the dashboard and Authentik OIDC
+login are running; Claude Code connects through `llm.viktornote.ch`.
+
+**Still unverified** (do not assume):
+
+1. Clean smoke-test pass for the `fp8` model after the check fix in `3c31140`.
+2. `/v1/messages` with `--api-key` and the prefix-cache speedup numbers: read the last smoke
+   test report rather than trusting this list.
+3. Reboot survival (firewall unit, containers) and the firewall from outside the LAN.
+4. The `long` and `coding` profiles (262,144 context). Upstream ran 262,144 only with prefix
+   caching off.
 5. `--enable-prompt-tokens-details` and the `memlock`/`nofile` ulimits are additions that
    upstream's compose does not have.
 6. The `radiance_engine` and `llamacpp_fallback` roles are untested skeletons.
-7. The CPU model (`llm_cpu_model` role) has not been run: that the `server` image starts with
-   these flags, has `curl` for its health check, loads the GGUF, and reaches the expected speed.
-   The `fp8` entry of `llm_models` is also untested.
+7. CPU model speed against the 15-25 tokens/s estimate.
+8. MXFP4 vs FP8 quality and speed on real prompts, and benchmark baselines for both.
 
 Checked: Docker's apt repository has a `resolute` (26.04) suite.

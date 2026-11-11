@@ -6,7 +6,9 @@ Nothing is configured by hand on the host.
 
 > vllm-radiance is an experimental community project. The exact upstream versions and
 > documents this setup is based on are recorded in [VERSIONS.md](VERSIONS.md).
-> **This code has been linted and syntax-checked but not yet run against the host.**
+> **Status: deployed and in daily use** (MXFP4 and FP8 both load, smoke test passes, CPU model,
+> dashboard and Authentik login are on). Open items and what to do next:
+> [NEXT-STEPS.md](NEXT-STEPS.md). Taking over this repo: [HANDOVER.md](HANDOVER.md).
 
 | | |
 |---|---|
@@ -57,25 +59,29 @@ llm-server/
     inventory/group_vars/llm/   main.yml (all tunables), images.yml (digests), vault.yml.example
     playbooks/                  site.yml, smoke-test.yml, fallback-llamacpp.yml, sudo-nopasswd.yml
     roles/                      host_prep, docker, llm_firewall, llm_models, vllm_radiance,
-                                open_webui, litellm*, radiance_engine*, llamacpp_fallback*, llm_monitoring
-  scripts/                      smoke_test.py, bench.py, claude-code-env.{ps1,sh}, resolve-digest.sh
+                                open_webui, llm_cpu_model, llm_dashboard, llm_monitoring,
+                                litellm*, radiance_engine*, llamacpp_fallback*
+  scripts/                      smoke_test.py (run by smoke-test.yml), bench.py, claude-local.sh,
+                                claude-code-env.{ps1,sh}, resolve-digest.sh
   docs/                         bios-kernel-checklist, reverse-proxy, kernel-update, troubleshooting
+  HANDOVER.md                   how to pick this up: setup, secrets, daily commands, gotchas
+  NEXT-STEPS.md                 current state and open items
+  VERSIONS.md                   pinned versions, sources, what is still unverified
 ```
 
 `*` optional, off by default.
 
 ## First run
 
-Run Ansible from WSL (Ubuntu), in `llm-server/ansible`. The SSH key that is installed on the
-host must be usable from WSL: copy it into `~/.ssh` there, or install the WSL key with
-`ssh-copy-id viktor@192.168.1.41`.
+Run everything from WSL (Ubuntu), with the repo cloned into the **Linux home directory**
+(`~/homelab-truenas`), not under `/mnt/c`. Setup from scratch is in [HANDOVER.md](HANDOVER.md).
+The SSH key installed on the host must be usable from WSL (`ssh-copy-id viktor@192.168.1.41`).
 
 ```bash
-cd llm-server/ansible
-# Required when the repo sits on a Windows drive (/mnt/c/...): Ansible ignores
+cd ~/homelab-truenas/llm-server/ansible
+# Only needed if the repo sits on a Windows drive (/mnt/c/...): Ansible ignores
 # ansible.cfg in world-writable directories, and without it no inventory is found.
-# Cloning into the Linux home directory avoids this.
-export ANSIBLE_CONFIG=$PWD/ansible.cfg
+# export ANSIBLE_CONFIG=$PWD/ansible.cfg
 ansible-galaxy collection install -r requirements.yml
 
 # Secrets
@@ -212,7 +218,7 @@ KV cache). Two entries are configured:
 | `llm_model` | Weights | Default profile | Status |
 |---|---|---|---|
 | `mxfp4` (default) | 18.4 GiB | `chat`: 131,072 x 4 | upstream-qualified, tested here |
-| `fp8` | 28.75 GiB | `chat-fp8`: 131,072 x 2 | **untested here**; higher precision, smaller KV pool |
+| `fp8` | 28.75 GiB | `chat-fp8`: 131,072 x 2 | loads and answers (smoke test); higher precision, smaller KV pool. Quality/speed vs MXFP4 not yet judged |
 
 ```bash
 ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags models,engine -e llm_model=fp8

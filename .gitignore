@@ -50,3 +50,6 @@ __pycache__/
 
 # Ansible vault with real secrets (the .example is tracked)
 llm-server/ansible/inventory/group_vars/llm/vault.yml
+
+# Local Ansible collection/role cache (ansible-galaxy)
+.ansible/
