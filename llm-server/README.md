@@ -293,7 +293,7 @@ The first run downloads 19 GB. The Open WebUI container is recreated to add the 
 Prometheus + Grafana on the host, with a provisioned "Local LLM" dashboard: running and
 waiting requests, generation and prompt tokens/s, KV-cache use, prefix-cache hit rate,
 preemptions, time to first token, latency percentiles, and per-GPU load, VRAM, power,
-temperature and fan speed. Prometheus keeps 30 days (`llm_prometheus_retention`).
+temperature and fan speed, plus host CPU and memory use. Prometheus keeps 30 days (`llm_prometheus_retention`).
 
 ```bash
 ansible-vault edit inventory/group_vars/llm/vault.yml     # add vault_grafana_admin_password
