@@ -19,6 +19,25 @@
     group: root
     mode: "0755"
 
+- name: Create the Docker service drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Only reloads systemd. Restarting Docker would stop every container, so this applies at the
+# next boot.
+- name: Make Docker wait for the LAN address at boot
+  ansible.builtin.template:
+    src: wait-for-lan.conf.j2
+    dest: /etc/systemd/system/docker.service.d/10-wait-for-lan.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
 - name: Configure the Docker daemon
   ansible.builtin.template:
     src: daemon.json.j2

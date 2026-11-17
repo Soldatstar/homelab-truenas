@@ -1,0 +1,13 @@
+# Managed by Ansible (docker). Takes effect at the next boot.
+#
+# The containers publish ports on {{ llm_lan_ip }}. If Docker starts before {{ llm_lan_interface }} has
+# that address, the bind fails ("cannot assign requested address") and Docker does not retry,
+# so those containers stay down or come up without their ports. Wait for the address first.
+[Unit]
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Gives up after two minutes and starts Docker anyway, so a missing cable cannot block boot.
+# "$$" is systemd's escape for a literal "$"; without it systemd expands $i itself.
+ExecStartPre=/bin/sh -c 'for i in $$(seq 1 120); do ip -4 -o addr show dev {{ llm_lan_interface }} | grep -q " {{ llm_lan_ip }}/" && exit 0; sleep 1; done; echo "{{ llm_lan_ip }} not up on {{ llm_lan_interface }}, starting Docker anyway" >&2'
