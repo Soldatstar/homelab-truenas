@@ -1,0 +1,49 @@
+---
+# Run ONE Qwen3.8-Flash-Next instance (StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe) on
+# both GPUs, to see what the hardware can do. Replaces the vllm-radiance engine on the same
+# port and Docker alias; Open WebUI and the CPU model keep running.
+#
+#   ansible-playbook playbooks/flash-next.yml --ask-become-pass --ask-vault-pass
+#
+# The first run downloads about 114 GiB and then loads for several minutes (Ansible waits
+# up to radiance_engine_health_timeout_minutes). The GPU engine is down meanwhile.
+#
+# Needs about 70 GiB of RAM for the pinned pools. With the CPU model (19 GiB) loaded that
+# fits in 128 GiB; add -e flashnext_stop_cpu_model=true to free it anyway.
+#
+# Back to the 27B vLLM stack:
+#   ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags engine
+# (site.yml stops the radiance container before starting vllm-radiance.)
+- name: Deploy a single Qwen3.8-Flash-Next instance
+  hosts: llm
+  become: true
+  vars:
+    flashnext_stop_cpu_model: false
+  pre_tasks:
+    - name: Read the vault file on the controller
+      ansible.builtin.slurp:
+        src: "{{ inventory_dir }}/group_vars/llm/vault.yml"
+      delegate_to: localhost
+      become: false
+      register: flashnext_vault_file
+
+    - name: Refuse to run with a plaintext vault
+      ansible.builtin.assert:
+        that: (flashnext_vault_file.content | b64decode).startswith('$ANSIBLE_VAULT')
+        fail_msg: "group_vars/llm/vault.yml is not encrypted. Run: ansible-vault encrypt inventory/group_vars/llm/vault.yml"
+        quiet: true
+
+    - name: Stop the other engines (they hold the GPUs and the API port)
+      ansible.builtin.include_tasks:
+        file: tasks/stop_other_engines.yml
+      vars:
+        site_active_project: radiance
+
+    - name: Stop the CPU model to free its RAM
+      community.docker.docker_compose_v2:
+        project_src: "{{ llm_base_dir }}/llm-cpu"
+        state: stopped
+      when: flashnext_stop_cpu_model | bool
+
+  roles:
+    - role: radiance_engine

@@ -206,6 +206,32 @@ llm_cpu_thinking: false
 # model instead of the GPU model, so they stop taking GPU sequences from your chat.
 llm_cpu_use_for_tasks: false
 
+# Standalone radiance engine (roles/radiance_engine), used by playbooks/flash-next.yml or
+# with llm_engine: radiance_engine. Defaults are the Qwen3.8-Flash-Next model card's serve
+# command for two R9700s. The experts (114 GiB) do not fit the cards, so the engine keeps
+# the hot ones in VRAM and streams the rest from pinned host RAM.
+radiance_engine_model_repo: StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe # "" = file already in place
+radiance_engine_model_revision: 8267a67384583f6be309981baf878b09ff900a9a # HF commit, 2026-10-03
+radiance_engine_model_file: qwen3.8-next-flash-fp8-iq4r-moe.rad # inside {{ llm_models_dir }}/rad
+radiance_engine_min_free_gib: 130 # disk needed before the download starts
+radiance_engine_min_ram_gib: 96 # host RAM needed with ngram placement in RAM
+radiance_engine_tp_wire: wht6 # wht6 is lossy for large messages; "exact" costs 5-10% speed
+# The model was trained for 262,144 tokens and its card serves 200,000. Anything above 262,144
+# is an experiment: radiance may refuse it at start, or quality may drop at that length.
+# Model card defaults: 200000 x 8. The KV pool is shared, so fewer sequences leave each one more.
+radiance_engine_max_model_len: 300000
+radiance_engine_max_num_seqs: 4
+radiance_engine_placement: expert_tiered
+radiance_engine_host_pool_mib: 12288 # pinned per GPU rank, so 24 GiB with two cards
+radiance_engine_gpu_headroom_mib: 96
+radiance_engine_expert_vs_cache_ratio: "" # the model card's 0.82; "" omits it (1.17.0 rejects --expert-vs-cache-ratio)
+radiance_engine_ngram_placement: ram # ~48 GiB pinned; "disk" only on NVMe (about 7x slower on HDD)
+radiance_engine_spec_tokens: 3 # MTP speculative tokens
+radiance_engine_max_batched_tokens: 2048
+radiance_engine_prefix_cache_mib: 4096 # 0 omits the flag
+radiance_engine_extra_args: [] # raw extra flags, e.g. ["--reasoning-effort-map", "high=xhigh"]
+radiance_engine_health_timeout_minutes: 45
+
 # Only needed if the engine's native /v1/messages fails the smoke test.
 litellm_enabled: false
 litellm_port: 4000

@@ -244,15 +244,38 @@ is the one with a large measured gain (about 3x decode) and passed the sampled t
 if you try it, it needs a drafter checkpoint, the V2 runner and `PIECEWISE` graphs, and
 upstream ran it at 8K context only.
 
-## Standalone radiance engine (optional)
+## Standalone radiance engine and Qwen3.8-Flash-Next (optional)
 
 The original author stopped maintaining vllm-radiance and recommends the standalone
-[radiance](https://codeberg.org/StillDeadcode/radiance) engine. Its README claims OpenAI,
-Anthropic Messages and llama-server APIs and lists Qwen3.8-27B MXFP4 on two R9700s. It is
-not the default here because tool calling and streaming are undocumented for the Qwen
-models, and it needs weights converted to its own `.rad` format (manual `rad-convert` step).
-The `radiance_engine` role is an untested skeleton: set `llm_engine: radiance_engine` and
-`radiance_engine_model_file`, then judge it with `smoke-test.yml`.
+[radiance](https://codeberg.org/StillDeadcode/radiance) engine. It is not the default here
+because tool calling and streaming are undocumented for the Qwen models. The
+`radiance_engine` role is **untested on this host**.
+
+`playbooks/flash-next.yml` runs one
+[Qwen3.8-Flash-Next](https://huggingface.co/StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe)
+instance on both GPUs, to see what the hardware can do. It stops vllm-radiance (the GPUs and
+port 8000 are shared), downloads the 114 GiB `.rad` file to `/srv/llm/models/rad`, and starts
+the `radiance` container behind the same `llm-backend` alias. Open WebUI and the CPU model keep
+running.
+
+```bash
+ansible-playbook playbooks/flash-next.yml --ask-become-pass --ask-vault-pass
+# back to the 27B stack:
+ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags engine
+```
+
+- **Memory:** the experts do not fit two 32 GB cards, so the engine streams them from pinned
+  host RAM: about 24 GiB host pool plus a 48 GiB n-gram table, none of it swappable. With the
+  19 GiB CPU model loaded that is about 91 of 128 GiB. `-e flashnext_stop_cpu_model=true`
+  frees the CPU model's RAM.
+- **Open WebUI:** its default and task model are `qwen3.8-27b`, which the new engine does not
+  serve. Pick the new model by hand in the UI; title and tag generation fail until you switch
+  back or set `openwebui_task_model` to the CPU model (`llm_cpu_use_for_tasks: true`).
+- **Reference numbers** (Level1Techs guide, radiance 1.2.3, not this host): about 125 tok/s
+  single stream, 879 tok/s aggregate at 8 streams. The card quotes about 15 ms per decode step.
+- Tunables are the `radiance_engine_*` block in `group_vars/llm/main.yml`. `smoke-test.yml` and
+  `bench.py` target the vLLM names; for this engine use
+  `bench.py --model <id from /v1/models>`.
 
 ## Benchmark
 
