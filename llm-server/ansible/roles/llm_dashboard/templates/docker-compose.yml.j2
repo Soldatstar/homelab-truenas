@@ -12,6 +12,7 @@ services:
     # Not published: only Grafana (same Docker network) talks to it.
     volumes:
       - "{{ llm_base_dir }}/dashboard/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "{{ llm_base_dir }}/dashboard/engine-api-key:/etc/prometheus/engine-api-key:ro"
       - "{{ llm_data_dir }}/prometheus:/prometheus"
     networks:
       - llm

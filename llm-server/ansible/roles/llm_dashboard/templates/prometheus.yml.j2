@@ -4,9 +4,13 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  # The active inference engine, reached by its network alias. /metrics needs no API key.
+  # The active inference engine, reached by its network alias. The radiance engine answers
+  # /metrics with 401 unless the API key is sent; vLLM ignores the header, so it is always set.
   - job_name: llm-engine
     metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/engine-api-key
     static_configs:
       - targets: ["{{ llm_backend_alias }}:8000"]
 
