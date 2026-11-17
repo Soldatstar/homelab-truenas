@@ -1,0 +1,90 @@
+---
+# Creates or updates model presets (custom models with their own parameters) through Open WebUI's
+# API, so they exist without clicking through the editor. Config as code: a preset is rewritten from
+# openwebui_model_presets on every run when openwebui_presets_update is true, so change presets in
+# group_vars, not in the UI. Access grants are not set here: a preset is private to the admin until
+# you share it in the UI (Workspace -> Models -> Access).
+- name: Sign in to Open WebUI as the admin
+  ansible.builtin.uri:
+    url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/api/v1/auths/signin"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ vault_webui_admin_email }}"
+      password: "{{ vault_webui_admin_password }}"
+    status_code: 200
+  register: openwebui_presets_signin
+  no_log: true
+
+- name: Look up each preset
+  ansible.builtin.uri:
+    url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/api/v1/models/model?id={{ item.id | urlencode }}"
+    headers:
+      Authorization: "Bearer {{ openwebui_presets_signin.json.token }}"
+    status_code: [200, 401, 404]
+    return_content: true
+  loop: "{{ openwebui_model_presets }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: openwebui_presets_existing
+  no_log: true
+
+- name: Create the missing presets
+  ansible.builtin.uri:
+    url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/api/v1/models/create"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ openwebui_presets_signin.json.token }}"
+    body_format: json
+    body:
+      id: "{{ item.item.id }}"
+      name: "{{ item.item.name }}"
+      base_model_id: "{{ llm_served_model_name }}"
+      params: "{{ item.item.params }}"
+      meta:
+        description: "{{ item.item.description | default('') }}"
+        tags: "{{ item.item.tags | default([]) | map('community.general.dict_kv', 'name') | list }}"
+        capabilities: "{{ item.item.capabilities | default({}) }}"
+      is_active: true
+    status_code: 200
+  loop: "{{ openwebui_presets_existing.results }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  when: item.status != 200 or (item.json | default(none)) is none
+  register: openwebui_presets_created
+  no_log: true
+
+- name: Update the presets that already exist
+  ansible.builtin.uri:
+    url: "http://{{ llm_lan_ip }}:{{ llm_webui_port }}/api/v1/models/model/update"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ openwebui_presets_signin.json.token }}"
+    body_format: json
+    body:
+      id: "{{ item.item.id }}"
+      name: "{{ item.item.name }}"
+      base_model_id: "{{ llm_served_model_name }}"
+      params: "{{ item.item.params }}"
+      meta:
+        description: "{{ item.item.description | default('') }}"
+        tags: "{{ item.item.tags | default([]) | map('community.general.dict_kv', 'name') | list }}"
+        capabilities: "{{ item.item.capabilities | default({}) }}"
+      is_active: true
+    status_code: 200
+  loop: "{{ openwebui_presets_existing.results }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  when:
+    - openwebui_presets_update | bool
+    - item.status == 200
+    - (item.json | default(none)) is not none
+  register: openwebui_presets_updated
+  no_log: true
+
+- name: Show what happened to the presets
+  ansible.builtin.debug:
+    msg: >-
+      Open WebUI presets for {{ llm_served_model_name }}:
+      created {{ openwebui_presets_created.results | rejectattr('skipped', 'defined') | map(attribute='item') | map(attribute='item') | map(attribute='id') | list }},
+      updated {{ openwebui_presets_updated.results | rejectattr('skipped', 'defined') | map(attribute='item') | map(attribute='item') | map(attribute='id') | list }}.

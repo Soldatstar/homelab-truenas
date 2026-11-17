@@ -101,3 +101,9 @@
       no_log: true
       changed_when: true
       when: open_webui_config.json.onboarding | default(false)
+
+- name: Create or update the model presets
+  ansible.builtin.include_tasks: presets.yml
+  when:
+    - openwebui_model_presets | length > 0
+    - not ansible_check_mode
