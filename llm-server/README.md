@@ -260,20 +260,43 @@ running.
 
 ```bash
 ansible-playbook playbooks/flash-next.yml --ask-become-pass --ask-vault-pass
+# pick a model and a context profile:
+ansible-playbook playbooks/flash-next.yml --ask-become-pass --ask-vault-pass \
+  -e radiance_model=uncensored_v4 -e radiance_profile=long
 # back to the 27B stack:
 ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags engine
 ```
 
+| `radiance_model` | File | Engine image | Status |
+|---|---|---|---|
+| `stock` (default) | `qwen3.8-next-flash-fp8-iq4r-moe.rad` | radiance 1.x (`radiance_engine_image`) | Runs and serves here |
+| `uncensored_v4` | `qwen3.8-next-flash-uncensored-iqr-v4.rad` | radiance 2.1.0 (`radiance_engine_image_v2`), configured by a YAML file | **Untested here.** Refusals removed. The author served it once on one card; no speed or refusal numbers exist |
+
+| `radiance_profile` | Context | Sequences | Status |
+|---|---|---|---|
+| `card` (default) | 200,000 | 8 | The model card's setting |
+| `native` | 262,144 | 4 | The model's trained length, no YaRN; pool about 1.05M tokens (estimate). Good everyday choice |
+| `long` | 409,600 | 2 | **Experimental.** Stretched with YaRN (`rope-scaling: yarn:2`); from one forum report, and radiance 2.1.0 recognizes the key |
+| `xlong` | 500,000 | 2 | Same, near the 524,288 limit of `yarn:2` |
+
+The model was trained for 262,144 tokens. The KV cache is small (about 1.1M tokens fit in
+VRAM), so a long context is limited by the rope range and by prefill time, not by host RAM. At
+about 700 tok/s prefill (a forum figure at 200K), a 400K prompt takes about ten minutes to read.
+
 - **Memory:** the experts do not fit two 32 GB cards, so the engine streams them from pinned
-  host RAM: about 24 GiB host pool plus a 48 GiB n-gram table, none of it swappable. With the
-  19 GiB CPU model loaded that is about 91 of 128 GiB. `-e flashnext_stop_cpu_model=true`
+  host RAM: about 24 GiB host pool plus, for the stock model, a 48 GiB n-gram table, none of it
+  swappable (observed: 85.8 GiB pinned). The `uncensored_v4` file reads its n-gram table from
+  disk instead (keep it on NVMe), which should lower pinned RAM; that is the card's claim, not
+  measured here. With the 19 GiB CPU model loaded the stock model uses about 91 of 128 GiB. `-e flashnext_stop_cpu_model=true`
   frees the CPU model's RAM.
 - **Open WebUI:** its default and task model are `qwen3.8-27b`, which the new engine does not
   serve. Pick the new model by hand in the UI; title and tag generation fail until you switch
   back or set `openwebui_task_model` to the CPU model (`llm_cpu_use_for_tasks: true`).
 - **Reference numbers** (Level1Techs guide, radiance 1.2.3, not this host): about 125 tok/s
   single stream, 879 tok/s aggregate at 8 streams. The card quotes about 15 ms per decode step.
-- Tunables are the `radiance_engine_*` block in `group_vars/llm/main.yml`. `smoke-test.yml` and
+- **Reasoning, sampling and Open WebUI presets** for the uncensored model:
+  [docs/flash-next-settings.md](docs/flash-next-settings.md).
+- Tunables are the `radiance_*` blocks in `group_vars/llm/main.yml`. `smoke-test.yml` and
   `bench.py` target the vLLM names; for this engine use
   `bench.py --model <id from /v1/models>`.
 

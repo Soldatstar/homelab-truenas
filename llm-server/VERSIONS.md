@@ -17,6 +17,9 @@ Recorded 2026-11-10. Every decision in this folder traces back to one of these.
 | LiteLLM (optional) | `main-stable` on 2026-11-10 (release v1.108.4) | `sha256:c560d3171368...` |
 | node-exporter (optional) | v1.12.1 | `sha256:1b4e4438faca...` |
 | radiance engine (optional) | `latest` on 2026-11-10 (source tree 1.17.0) | `sha256:c2acbaa373c8...` |
+| radiance engine 2.x (optional, `uncensored_v4` only) | Docker Hub `2.1.0` = `latest` on 2026-11-17 | `sha256:c9affc489e43...` |
+| Flash-Next model (stock) | `StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe`, 113.6 GiB `.rad` | commit `8267a6738458...` |
+| Flash-Next model (uncensored) | `StillDeadcode/qwen3.8-next-flash-uncensored-iqr-v4`, 113.3 GiB `.rad`, needs radiance 2.0.0+ | commit `f2a1cd87884d...` |
 | llama.cpp (fallback) | `server-vulkan` / `server-rocm` on 2026-11-10 | see `images.yml` |
 
 Full digests are in `ansible/inventory/group_vars/llm/images.yml`.
@@ -75,6 +78,14 @@ profile (131,072 x 4, prefix caching + align) starts; chat and tool calls work; 
 (`llm_cpu_model`) loads, answers, and is listed in Open WebUI; the Open WebUI v0.13.3
 environment variables are accepted and signup is closed; the dashboard and Authentik OIDC
 login are running; Claude Code connects through `llm.viktornote.ch`.
+
+Added 2026-11-18, `playbooks/flash-next.yml` with `radiance_model=uncensored_v4` (radiance 2.1.0, YAML
+config): the model loads and serves on both cards in about 50 s; `rope-scaling: yarn:2` at 409,600
+tokens starts; thinking can be switched off with `reasoning_effort: none` and `"high"` is rejected
+(mapped to `xhigh`). Measured KV pools (`radiance:kv_cache_max_tokens`): stock 1,100,092 (200K x 8) and
+1,130,136 (300K x 4); v4 416,120 (409,600 x 2, host pool 12288), 819,280 (host pool 20480) and
+976,180 (262,144 x 4, `native` profile). Still unmeasured: speed on this host, refusal behavior of the
+quantized file, recall at 400K+ with YaRN.
 
 **Still unverified** (do not assume):
 

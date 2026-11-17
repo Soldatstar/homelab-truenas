@@ -1,15 +1,21 @@
 ---
-# Run ONE Qwen3.8-Flash-Next instance (StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe) on
-# both GPUs, to see what the hardware can do. Replaces the vllm-radiance engine on the same
-# port and Docker alias; Open WebUI and the CPU model keep running.
+# Run ONE Qwen3.8-Flash-Next instance on both GPUs, to see what the hardware can do. Replaces
+# the vllm-radiance engine on the same port and Docker alias; Open WebUI and the CPU model
+# keep running. Choose the model and the context profile from group_vars/llm/main.yml:
 #
 #   ansible-playbook playbooks/flash-next.yml --ask-become-pass --ask-vault-pass
+#   ... -e radiance_model=uncensored_v4 -e radiance_profile=long
 #
-# The first run downloads about 114 GiB and then loads for several minutes (Ansible waits
-# up to radiance_engine_health_timeout_minutes). The GPU engine is down meanwhile.
+#   radiance_model    stock (default) | uncensored_v4   (each has its own engine image)
+#   radiance_profile  card (200K x 8, default) | long (409,600 x 2, YaRN) | xlong (500,000 x 2)
 #
-# Needs about 70 GiB of RAM for the pinned pools. With the CPU model (19 GiB) loaded that
-# fits in 128 GiB; add -e flashnext_stop_cpu_model=true to free it anyway.
+# The first run for a model downloads about 114 GiB and then loads for several minutes
+# (Ansible waits up to radiance_engine_health_timeout_minutes). The GPU engine is down meanwhile.
+# Switching models also switches the engine image, so the container is recreated.
+#
+# Needs about 70-86 GiB of RAM for the pinned pools when the n-gram table is in RAM (the
+# stock model). With the CPU model (19 GiB) loaded that fits in 128 GiB; add
+# -e flashnext_stop_cpu_model=true to free it anyway.
 #
 # Back to the 27B vLLM stack:
 #   ansible-playbook playbooks/site.yml --ask-become-pass --ask-vault-pass --tags engine
@@ -47,3 +53,15 @@
 
   roles:
     - role: radiance_engine
+    # Open WebUI's default model and background-task model point at the 27B's name, which this
+    # engine does not serve. Re-run its role with the new id (and without the stopped CPU model)
+    # so the model shows up as the default and titles/tags work. Only the open-webui container
+    # is recreated; the engine is not touched. Skipped for models whose id the engine picks itself.
+    - role: open_webui
+      tags: [webui]
+      when: radiance_model_settings.served_name | length > 0
+      vars:
+        llm_served_model_name: "{{ radiance_model_settings.served_name }}"
+        openwebui_model_presets: "{{ radiance_model_settings.webui_presets | default([]) }}"
+        openwebui_default_model: "{{ radiance_model_settings.webui_default_model | default('') }}"
+        llm_cpu_model_enabled: "{{ hostvars[inventory_hostname].llm_cpu_model_enabled and not (flashnext_stop_cpu_model | bool) }}"

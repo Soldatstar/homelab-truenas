@@ -1,6 +1,8 @@
 # Managed by Ansible (radiance_engine). Do not edit on the host.
-# Flags follow the Qwen3.8-Flash-Next model card (huggingface.co/StillDeadcode/
-# qwen3.8-next-flash-fp8-iq4r-moe) and the Level1Techs dual-R9700 guide. Differences:
+# Model: {{ radiance_model }} ({{ radiance_model_settings.file }}), profile: {{ radiance_profile }}
+# ({{ radiance_profile_settings.max_model_len }} tokens x {{ radiance_profile_settings.max_num_seqs }} sequences).
+# Flags follow the model cards (huggingface.co/StillDeadcode) and the Level1Techs dual-R9700
+# guide. Differences:
 #   - bridge network with a LAN-bound published port instead of host networking,
 #     so the DOCKER-USER firewall and the internal backend alias keep working;
 #     hence --host 0.0.0.0 on the container port 8000
@@ -10,13 +12,18 @@
 name: radiance
 services:
   radiance:
-    image: "{{ radiance_engine_image }}"
+    image: "{{ radiance_model_settings.image }}"
     container_name: radiance
     restart: unless-stopped
     init: true
+{% if radiance_model_settings.config == 'yaml' %}
+    command:
+      - --config
+      - /etc/radiance/radiance.yaml
+{% else %}
     command:
       - --model
-      - /models/{{ radiance_engine_model_file }}
+      - /models/{{ radiance_model_settings.file }}
       - --host
       - 0.0.0.0
       - --port
@@ -28,23 +35,25 @@ services:
       - --tp-wire
       - "{{ radiance_engine_tp_wire }}"
       - --max-num-seqs
-      - "{{ radiance_engine_max_num_seqs }}"
+      - "{{ radiance_profile_settings.max_num_seqs }}"
       - --max-model-len
-      - "{{ radiance_engine_max_model_len }}"
+      - "{{ radiance_profile_settings.max_model_len }}"
       - --kv-cache-dtype
-      - fp8
+      - "{{ radiance_model_settings.kv_cache_dtype }}"
       - --placement
       - "{{ radiance_engine_placement }}"
       - --host-pool-mib
-      - "{{ radiance_engine_host_pool_mib }}"
+      - "{{ radiance_profile_settings.host_pool_mib | default(radiance_engine_host_pool_mib) }}"
       - --gpu-headroom-mib
       - "{{ radiance_engine_gpu_headroom_mib }}"
-{% if radiance_engine_expert_vs_cache_ratio | string | length > 0 %}
+{% if radiance_model_settings.expert_vs_cache_ratio | string | length > 0 %}
       - --expert-vs-cache-ratio
-      - "{{ radiance_engine_expert_vs_cache_ratio }}"
+      - "{{ radiance_model_settings.expert_vs_cache_ratio }}"
 {% endif %}
+{% if radiance_model_settings.ngram_placement | length > 0 %}
       - --ngram-placement
-      - "{{ radiance_engine_ngram_placement }}"
+      - "{{ radiance_model_settings.ngram_placement }}"
+{% endif %}
       - --num-speculative-tokens
       - "{{ radiance_engine_spec_tokens }}"
       - --max-num-batched-tokens
@@ -53,9 +62,14 @@ services:
       - --prefix-cache-mib
       - "{{ radiance_engine_prefix_cache_mib }}"
 {% endif %}
+{% if radiance_profile_settings.rope_scaling | length > 0 %}
+      - --rope-scaling
+      - "{{ radiance_profile_settings.rope_scaling }}"
+{% endif %}
 {% for arg in radiance_engine_extra_args %}
       - "{{ arg }}"
 {% endfor %}
+{% endif %}
     env_file:
       - radiance.env
     environment:
@@ -90,6 +104,9 @@ services:
       - "{{ llm_lan_ip }}:{{ llm_api_port }}:8000"
     volumes:
       - "{{ llm_models_dir }}/rad:/models:ro"
+{% if radiance_model_settings.config == 'yaml' %}
+      - "{{ llm_base_dir }}/radiance/radiance.yaml:/etc/radiance/radiance.yaml:ro"
+{% endif %}
     networks:
       llm:
         aliases:

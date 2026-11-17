@@ -164,6 +164,14 @@ openwebui_searxng_enabled: true # web search, no VRAM
 openwebui_rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2 # runs on CPU
 # Background tasks each take a sequence on the same model for a few seconds.
 openwebui_task_model: "{{ llm_cpu_served_name if (llm_cpu_model_enabled and llm_cpu_use_for_tasks) else llm_served_model_name }}"
+# Model shown first in new chats. "" = the served model itself. A preset id works too.
+openwebui_default_model: ""
+# Presets created through Open WebUI's API (roles/open_webui/tasks/presets.yml); each is a custom
+# model on top of the served model with its own parameters. The flash-next playbook fills this
+# from the radiance_models entry. Edit presets in group_vars, not in the UI: with
+# openwebui_presets_update they are rewritten on every run. Presets start private to the admin.
+openwebui_model_presets: []
+openwebui_presets_update: true
 openwebui_title_generation: true
 openwebui_tags_generation: true
 openwebui_follow_up_generation: true
@@ -207,29 +215,114 @@ llm_cpu_thinking: false
 llm_cpu_use_for_tasks: false
 
 # Standalone radiance engine (roles/radiance_engine), used by playbooks/flash-next.yml or
-# with llm_engine: radiance_engine. Defaults are the Qwen3.8-Flash-Next model card's serve
-# command for two R9700s. The experts (114 GiB) do not fit the cards, so the engine keeps
-# the hot ones in VRAM and streams the rest from pinned host RAM.
-radiance_engine_model_repo: StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe # "" = file already in place
-radiance_engine_model_revision: 8267a67384583f6be309981baf878b09ff900a9a # HF commit, 2026-10-03
-radiance_engine_model_file: qwen3.8-next-flash-fp8-iq4r-moe.rad # inside {{ llm_models_dir }}/rad
+# with llm_engine: radiance_engine. Serves one Qwen3.8-Flash-Next .rad model on both GPUs.
+# The experts (114 GiB) do not fit the cards, so the engine keeps the hot ones in VRAM and
+# streams the rest from pinned host RAM.
+#
+# Pick a model and a context profile (both can be overridden per run):
+#   ansible-playbook playbooks/flash-next.yml ... -e radiance_model=uncensored_v4 -e radiance_profile=long
+radiance_model: stock
+radiance_profile: card
+
+# One entry per .rad file. Every entry carries its own engine image, because the files are
+# built for different radiance generations: the v4 file needs radiance 2.0.0 or newer, and
+# its card says 2.x no longer serves the older fp8-iq4r-moe file. Do not point the stock
+# entry at the 2.x image without testing it.
+radiance_models:
+  stock: # StillDeadcode's quantization of Qwen's own model
+    repo: StillDeadcode/qwen3.8-next-flash-fp8-iq4r-moe # "" = file already in place
+    revision: 8267a67384583f6be309981baf878b09ff900a9a # HF commit, 2026-10-03
+    file: qwen3.8-next-flash-fp8-iq4r-moe.rad # inside {{ llm_models_dir }}/rad
+    image: "{{ radiance_engine_image }}"
+    config: cli # radiance 1.x takes command-line flags
+    served_name: "" # model id clients see; the 1.x engine picks its own (metrics show "qwen4exp")
+    kv_cache_dtype: fp8
+    expert_vs_cache_ratio: "" # the model card's 0.82; 1.17.0 rejects --expert-vs-cache-ratio
+    ngram_placement: ram # ~48 GiB pinned; "disk" only on NVMe (about 7x slower on HDD)
+  uncensored_v4: # orcarouter's abliterated model, IQR-V4 recipe. Refusals removed.
+    # Its author served it once (radiance 2.1.0, one card, a handful of plain questions).
+    # No speed, refusal-rate or 2-card numbers exist; judge it yourself.
+    repo: StillDeadcode/qwen3.8-next-flash-uncensored-iqr-v4
+    revision: f2a1cd87884dd2df2787c7d9efb8005b13f6a6da # HF commit, 2026-11-16
+    file: qwen3.8-next-flash-uncensored-iqr-v4.rad
+    image: "{{ radiance_engine_image_v2 }}"
+    config: yaml # radiance 2.x takes a YAML file (--config) and refuses command-line flags
+    served_name: flashnext-uncensored # the YAML key = the model id in /v1/models and Open WebUI
+    webui_default_model: flashnext-think # new chats in Open WebUI start on this preset
+    webui_presets: # see docs/flash-next-settings.md; sampling is left to the engine except for Fast
+      - id: flashnext-think
+        name: "Qwen 3.8 Flash-Next Think"
+        description: "Qwen 3.8 Flash-Next, thinking at medium effort. The everyday setting."
+        tags: ["Qwen 3.8"]
+        params: {reasoning_effort: medium, function_calling: native}
+        capabilities: {usage: true}
+      - id: flashnext-deep
+        name: "Qwen 3.8 Flash-Next Deep"
+        description: "Qwen 3.8 Flash-Next, thinking at the highest effort, with room for a long answer. Slower."
+        tags: ["Qwen 3.8"]
+        params: {reasoning_effort: xhigh, max_tokens: 32768, function_calling: native}
+        capabilities: {usage: true}
+      - id: flashnext-fast
+        name: "Qwen 3.8 Flash-Next Fast"
+        description: "Qwen 3.8 Flash-Next, thinking off, Qwen's non-thinking sampling. Quick replies."
+        tags: ["Qwen 3.8"]
+        params: {reasoning_effort: none, temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0.0, presence_penalty: 1.5, function_calling: native}
+        capabilities: {usage: true}
+    kv_cache_dtype: i8
+    expert_vs_cache_ratio: ""
+    ngram_placement: "" # no flag: this file reads its n-gram table from disk, keep it on NVMe
+radiance_model_settings: "{{ radiance_models[radiance_model] }}"
+
+# Context profiles. The model was trained for 262,144 tokens, so "long" and "xlong" stretch it
+# with YaRN (rope-scaling yarn:2, up to 524,288). The setting comes from one forum report; radiance
+# 2.1.0 does echo it back when it converts a command line to its YAML format, so it knows the key,
+# but nobody has shown it working at 400K here. Recall at the far end of the window may drop. The KV cache is small (about 1.1M tokens fit in VRAM), so context
+# length is limited by the rope range and by prefill time, not by host RAM.
+radiance_profiles:
+  card: # the model card's serve command
+    max_model_len: 200000
+    max_num_seqs: 8
+    rope_scaling: "" # "" = none
+  native: # the model's trained length: no rope stretching, 4 sequences, pool about 1.05M tokens
+    max_model_len: 262144
+    max_num_seqs: 4
+    rope_scaling: ""
+    host_pool_mib: 20480
+  long:
+    max_model_len: 409600
+    max_num_seqs: 2
+    rope_scaling: "yarn:2"
+    host_pool_mib: 20480 # pinned per rank; a bigger pool frees VRAM for cache (see below)
+  xlong:
+    max_model_len: 500000
+    max_num_seqs: 2
+    rope_scaling: "yarn:2"
+    host_pool_mib: 20480
+radiance_profile_settings: "{{ radiance_profiles[radiance_profile] }}"
+# A profile may set host_pool_mib; otherwise radiance_engine_host_pool_mib below applies. Measured
+# KV pools (tokens): card 1.10M, 300K x 4 1.13M (stock file); v4 at 409,600 x 2 416,120 with the
+# default 12288. The v4 log showed the pool only half used (6.6 of 12 GiB), so raising it may not
+# help: check the "kv cache ... tokens" line in `docker logs radiance` after each change.
+
 radiance_engine_min_free_gib: 130 # disk needed before the download starts
 radiance_engine_min_ram_gib: 96 # host RAM needed with ngram placement in RAM
 radiance_engine_tp_wire: wht6 # wht6 is lossy for large messages; "exact" costs 5-10% speed
-# The model was trained for 262,144 tokens and its card serves 200,000. Anything above 262,144
-# is an experiment: radiance may refuse it at start, or quality may drop at that length.
-# Model card defaults: 200000 x 8. The KV pool is shared, so fewer sequences leave each one more.
-radiance_engine_max_model_len: 300000
-radiance_engine_max_num_seqs: 4
 radiance_engine_placement: expert_tiered
-radiance_engine_host_pool_mib: 12288 # pinned per GPU rank, so 24 GiB with two cards
+radiance_engine_host_pool_mib: 12288 # default, pinned per GPU rank (x2 cards); profiles can override
 radiance_engine_gpu_headroom_mib: 96
-radiance_engine_expert_vs_cache_ratio: "" # the model card's 0.82; "" omits it (1.17.0 rejects --expert-vs-cache-ratio)
-radiance_engine_ngram_placement: ram # ~48 GiB pinned; "disk" only on NVMe (about 7x slower on HDD)
 radiance_engine_spec_tokens: 3 # MTP speculative tokens
 radiance_engine_max_batched_tokens: 2048
 radiance_engine_prefix_cache_mib: 4096 # 0 omits the flag
-radiance_engine_extra_args: [] # raw extra flags, e.g. ["--reasoning-effort-map", "high=xhigh"]
+radiance_engine_extra_args: [] # raw extra flags for "config: cli" models, e.g. ["--reasoning-effort-map", "high=xhigh"]
+# Extra keys for "config: yaml" models (radiance 2.1.0; the names are the ones `radiance --help` lists).
+# Verified on the host: reasoning-effort-map, reasoning-effort, thinking-token-budget, temp, top-k,
+# top-p, min-p, presence-penalty, chat-template-kwargs, reasoning-format, generation-config.
+#   reasoning-effort-map: "high=xhigh"  # Open WebUI sends low/medium/high; the engine rejects "high"
+#   reasoning-effort: medium            # server default for clients that send none (stock: xhigh)
+#   thinking-token-budget: 8192         # cap runaway thinking for clients that send none
+# Not set as defaults: coding agents that send no effort are better left on xhigh.
+radiance_engine_extra_config:
+  reasoning-effort-map: "high=xhigh"
 radiance_engine_health_timeout_minutes: 45
 
 # Only needed if the engine's native /v1/messages fails the smoke test.

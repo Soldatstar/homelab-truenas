@@ -1,0 +1,38 @@
+# Managed by Ansible (radiance_engine). Do not edit on the host.
+# Model: {{ radiance_model }}, profile: {{ radiance_profile }}
+# ({{ radiance_profile_settings.max_model_len }} tokens x {{ radiance_profile_settings.max_num_seqs }} sequences).
+# Radiance 2.x takes its settings from this file (radiance --config FILE), not from flags.
+# The layout is what the engine itself prints when it is given the equivalent command line.
+server:
+  host: 0.0.0.0
+  port: 8000
+  api-key-env: RADIANCE_API_KEY
+memory:
+  gpu-headroom-mib: {{ radiance_engine_gpu_headroom_mib }}
+models:
+  {{ radiance_model_settings.served_name | default(radiance_model_settings.file | regex_replace('\.rad$', ''), true) }}:
+    model: /models/{{ radiance_model_settings.file }}
+    tp: 2
+    tp-wire: {{ radiance_engine_tp_wire }}
+    max-num-seqs: {{ radiance_profile_settings.max_num_seqs }}
+    max-model-len: {{ radiance_profile_settings.max_model_len }}
+    kv-cache-dtype: {{ radiance_model_settings.kv_cache_dtype }}
+    placement: {{ radiance_engine_placement }}
+    host-pool-mib: {{ radiance_profile_settings.host_pool_mib | default(radiance_engine_host_pool_mib) }}
+{% if radiance_model_settings.expert_vs_cache_ratio | string | length > 0 %}
+    expert-vs-cache-ratio: {{ radiance_model_settings.expert_vs_cache_ratio }}
+{% endif %}
+{% if radiance_model_settings.ngram_placement | length > 0 %}
+    ngram-placement: {{ radiance_model_settings.ngram_placement }}
+{% endif %}
+    num-speculative-tokens: {{ radiance_engine_spec_tokens }}
+    max-num-batched-tokens: {{ radiance_engine_max_batched_tokens }}
+{% if radiance_engine_prefix_cache_mib | int > 0 %}
+    prefix-cache-mib: {{ radiance_engine_prefix_cache_mib }}
+{% endif %}
+{% if radiance_profile_settings.rope_scaling | length > 0 %}
+    rope-scaling: "{{ radiance_profile_settings.rope_scaling }}"
+{% endif %}
+{% for key, value in radiance_engine_extra_config.items() %}
+    {{ key }}: {{ value | to_json }}
+{% endfor %}

@@ -9,11 +9,11 @@
 - name: Assert the model settings are complete
   ansible.builtin.assert:
     that:
-      - radiance_engine_model_file | length > 0
-      - radiance_engine_max_num_seqs | int >= 2
+      - radiance_model_settings.file | length > 0
+      - radiance_profile_settings.max_num_seqs | int >= 2
     fail_msg: >-
-      Set radiance_engine_model_file (a .rad file name inside {{ llm_models_dir }}/rad) and
-      keep radiance_engine_max_num_seqs at 2 or more: Open WebUI and Claude Code make small
+      Each radiance_models entry needs a file name (inside {{ llm_models_dir }}/rad), and the
+      selected profile needs max_num_seqs of 2 or more: Open WebUI and Claude Code make small
       background requests that need their own sequence.
     quiet: true
 
@@ -21,7 +21,7 @@
   ansible.builtin.include_role:
     name: llm_models
     tasks_from: helper
-  when: radiance_engine_model_repo | length > 0
+  when: radiance_model_settings.repo | length > 0
 
 - name: Create the radiance directories
   ansible.builtin.file:
@@ -36,7 +36,7 @@
 
 - name: Check the model file
   ansible.builtin.stat:
-    path: "{{ llm_models_dir }}/rad/{{ radiance_engine_model_file }}"
+    path: "{{ llm_models_dir }}/rad/{{ radiance_model_settings.file }}"
   register: radiance_engine_model
 
 - name: Check free disk space for the download
@@ -45,7 +45,7 @@
   register: radiance_engine_df
   changed_when: false
   when:
-    - radiance_engine_model_repo | length > 0
+    - radiance_model_settings.repo | length > 0
     - not radiance_engine_model.stat.exists
 
 - name: Assert there is room for the model
@@ -54,7 +54,7 @@
     fail_msg: "Less than {{ radiance_engine_min_free_gib }} GiB free under {{ llm_models_dir }}."
     quiet: true
   when:
-    - radiance_engine_model_repo | length > 0
+    - radiance_model_settings.repo | length > 0
     - not radiance_engine_model.stat.exists
 
 - name: Download the .rad model (about 114 GiB on first run)
@@ -62,22 +62,22 @@
     argv:
       - "{{ llm_base_dir }}/hf-venv/bin/python"
       - "{{ llm_base_dir }}/bin/hf_snapshot.py"
-      - "{{ radiance_engine_model_repo }}"
-      - "{{ radiance_engine_model_revision }}"
+      - "{{ radiance_model_settings.repo }}"
+      - "{{ radiance_model_settings.revision }}"
       - "{{ llm_models_dir }}/rad"
-      - "{{ radiance_engine_model_file }}"
-    creates: "{{ llm_models_dir }}/rad/.complete-{{ radiance_engine_model_revision }}"
+      - "{{ radiance_model_settings.file }}"
+    creates: "{{ llm_models_dir }}/rad/.complete-{{ radiance_model_settings.revision }}"
   environment:
     HF_HOME: "{{ llm_hf_cache_dir }}"
     HF_TOKEN: "{{ vault_hf_token | default('') }}"
   async: 43200
   poll: 60
   no_log: true
-  when: radiance_engine_model_repo | length > 0
+  when: radiance_model_settings.repo | length > 0
 
 - name: Check the model file exists
   ansible.builtin.stat:
-    path: "{{ llm_models_dir }}/rad/{{ radiance_engine_model_file }}"
+    path: "{{ llm_models_dir }}/rad/{{ radiance_model_settings.file }}"
   register: radiance_engine_model_final
   when: not ansible_check_mode
 
@@ -85,8 +85,8 @@
   ansible.builtin.assert:
     that: radiance_engine_model_final.stat.exists
     fail_msg: >-
-      {{ llm_models_dir }}/rad/{{ radiance_engine_model_file }} not found. Set
-      radiance_engine_model_repo to download it, or copy a .rad file there.
+      {{ llm_models_dir }}/rad/{{ radiance_model_settings.file }} not found. Set
+      the model's repo to download it, or copy a .rad file there.
     quiet: true
   when: not ansible_check_mode
 
@@ -97,9 +97,9 @@
     that: ansible_facts.memtotal_mb | int >= radiance_engine_min_ram_gib | int * 1024
     fail_msg: >-
       The host has {{ ansible_facts.memtotal_mb }} MiB of RAM; this configuration needs about
-      {{ radiance_engine_min_ram_gib }} GiB. Use radiance_engine_ngram_placement: disk (NVMe only).
+      {{ radiance_engine_min_ram_gib }} GiB. Use a model entry with ngram_placement: disk (NVMe only).
     quiet: true
-  when: radiance_engine_ngram_placement == 'ram'
+  when: radiance_model_settings.ngram_placement == 'ram'
 
 - name: Look up the render and video group ids
   ansible.builtin.getent:
@@ -115,6 +115,24 @@
     mode: "0600"
   no_log: true
 
+- name: Refuse command-line extras for a YAML-configured model
+  ansible.builtin.assert:
+    that: radiance_model_settings.config != 'yaml' or radiance_engine_extra_args | length == 0
+    fail_msg: >-
+      radiance_engine_extra_args are command-line flags and this model's engine reads a YAML
+      file. Put them in radiance_engine_extra_config as key: value pairs instead.
+    quiet: true
+
+- name: Template the radiance settings file (YAML models)
+  ansible.builtin.template:
+    src: radiance.yaml.j2
+    dest: "{{ llm_base_dir }}/radiance/radiance.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: radiance_engine_yaml
+  when: radiance_model_settings.config == 'yaml'
+
 - name: Template the radiance compose file
   ansible.builtin.template:
     src: docker-compose.yml.j2
@@ -129,6 +147,8 @@
     state: present
     pull: missing
     remove_orphans: true
+    # A changed settings file is bind-mounted, so compose cannot see it: recreate explicitly.
+    recreate: "{{ 'always' if (radiance_engine_yaml.changed | default(false)) else 'auto' }}"
 
 - name: Wait for the model to load
   when: not ansible_check_mode
@@ -169,8 +189,10 @@
           (or /v1/models failed afterwards).
           "Too many open files" / "out of memory" at start: see nofile and the headroom settings
           in group_vars/llm/main.yml (radiance_engine_*). Out of memory on the cards: lower
-          radiance_engine_max_model_len or radiance_engine_max_num_seqs. Pinned-memory errors:
-          lower radiance_engine_host_pool_mib or use radiance_engine_ngram_placement: disk.
+          the profile's max_model_len or max_num_seqs. Pinned-memory errors:
+          lower radiance_engine_host_pool_mib. An "unknown option" line at the top of the log
+          means this engine version rejects a flag (for example --rope-scaling): use the card
+          profile or remove it.
           Go back to the vLLM stack with: site.yml --tags engine
 
           Last log lines:
