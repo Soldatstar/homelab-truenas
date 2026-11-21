@@ -1,0 +1,22 @@
+---
+# Run inside each container through `pct exec`. Community-script LXCs are Debian, Ubuntu or
+# Alpine; the app's own `update` command is interactive and is not run here.
+patch_lxc_probe_script: |
+  if [ -f /etc/debian_version ]; then
+    echo OS=debian
+    apt-get update -qq >/dev/null 2>&1
+    apt-get -s dist-upgrade | sed -n 's/^Inst \([^ ]*\).*/PKG=\1/p'
+    apt-get -s dist-upgrade | grep -i '^Inst .*security' | sed 's/^Inst \([^ ]*\).*/SEC=\1/'
+  elif [ -f /etc/alpine-release ]; then
+    echo OS=alpine
+    apk update >/dev/null 2>&1
+    apk upgrade -s | sed -n 's/^([0-9]*\/[0-9]*) Upgrading \([^ ]*\).*/PKG=\1/p'
+  else
+    echo OS=unsupported
+  fi
+patch_lxc_apply_script: |
+  if [ -f /etc/debian_version ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade
+  elif [ -f /etc/alpine-release ]; then
+    apk upgrade
+  fi

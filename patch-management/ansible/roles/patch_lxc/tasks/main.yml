@@ -1,0 +1,79 @@
+---
+# Runs on a Proxmox host. Containers are reached with `pct exec`, so they need no SSH.
+- name: List containers
+  ansible.builtin.command: pvesh get /nodes/{{ ansible_facts['hostname'] }}/lxc --output-format json
+  register: patch_lxc_list
+  changed_when: false
+
+- name: Pick the containers to look at
+  ansible.builtin.set_fact:
+    patch_lxc_all: >-
+      {%- set out = [] -%}
+      {%- for c in patch_lxc_list.stdout | from_json if not c.get('template') -%}
+      {%- set _ = out.append(c) -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Split into running and skipped
+  ansible.builtin.set_fact:
+    patch_lxc_running: >-
+      {%- set out = [] -%}
+      {%- for c in patch_lxc_all
+          if c.status == 'running'
+          and (c.vmid | int) not in (patch_lxc_skip | map('int') | list)
+          and 'nopatch' not in c.get('tags', '').split(';') -%}
+      {%- set _ = out.append(c) -%}
+      {%- endfor -%}
+      {{ out }}
+    patch_lxc_idle: >-
+      {{ patch_lxc_all | rejectattr('status', 'eq', 'running') | map(attribute='name') | list }}
+
+- name: Probe each container
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ item.vmid }}", --, sh, -c, "{{ patch_lxc_probe_script }}"]
+  register: patch_lxc_probe
+  changed_when: false
+  failed_when: false
+  loop: "{{ patch_lxc_running }}"
+  loop_control:
+    label: "{{ item.vmid }} {{ item.name }}"
+
+- name: Patch the containers
+  when: patch_mode == 'apply'
+  block:
+    - name: Snapshot before patching
+      ansible.builtin.command: pct snapshot {{ item.vmid }} pre-patch-{{ ansible_facts['date_time']['date'] | replace('-', '') }}
+      register: patch_lxc_snap
+      changed_when: patch_lxc_snap.rc == 0
+      failed_when: patch_lxc_snap.rc != 0 and 'already exists' not in patch_lxc_snap.stderr
+      loop: "{{ patch_lxc_running }}"
+      loop_control:
+        label: "{{ item.vmid }} {{ item.name }}"
+      when: patch_lxc_snapshot | bool
+
+    - name: Upgrade packages in each container
+      ansible.builtin.command:
+        argv: [pct, exec, "{{ item.vmid }}", --, sh, -c, "{{ patch_lxc_apply_script }}"]
+      register: patch_lxc_apply
+      changed_when: "'Inst ' in patch_lxc_apply.stdout or 'Unpacking' in patch_lxc_apply.stdout or 'Upgrading' in patch_lxc_apply.stdout"
+      loop: "{{ patch_lxc_running }}"
+      loop_control:
+        label: "{{ item.vmid }} {{ item.name }}"
+
+- name: Store the state
+  ansible.builtin.set_fact:
+    patch_lxc_state:
+      containers: >-
+        {%- set out = [] -%}
+        {%- for r in patch_lxc_probe.results -%}
+        {%- set lines = r.stdout_lines | default([]) -%}
+        {%- set _ = out.append({
+          'vmid': r.item.vmid, 'name': r.item.name,
+          'os': (lines | select('match', '^OS=') | list | first | default('OS=unknown')) | regex_replace('^OS=', ''),
+          'pending': lines | select('match', '^PKG=') | map('regex_replace', '^PKG=', '') | list,
+          'security': lines | select('match', '^SEC=') | map('regex_replace', '^SEC=', '') | list,
+          'probe_failed': r.rc != 0}) -%}
+        {%- endfor -%}
+        {{ out }}
+      not_running: "{{ patch_lxc_idle }}"
+      applied: "{{ patch_mode == 'apply' }}"

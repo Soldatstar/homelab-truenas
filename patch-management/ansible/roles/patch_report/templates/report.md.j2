@@ -1,0 +1,64 @@
+# Patch report
+
+Generated {{ ansible_facts['date_time']['iso8601'] }} by `{{ 'apply.yml' if patch_mode == 'apply' else 'check.yml' }}`.
+Hosts without data were not reached or are not covered by a play.
+
+## Hosts
+
+| Host | Kind | Pending | Security | Reboot | Held | Notes |
+|---|---|---|---|---|---|---|
+{% for h in patch_report_hosts %}
+{% if h.apt %}
+| {{ h.name }} | {{ h.apt.os }}{{ ' (' ~ h.apt.proxmox ~ ')' if h.apt.proxmox else '' }} | {{ h.apt.pending | length }} | {{ h.apt.security | length }} | {{ 'yes' if h.apt.reboot_required else 'no' }} | {{ h.apt.held | length }} | {{ ('applied ' ~ h.apt.applied | length) if h.apt.applied is defined else '' }} |
+{% elif h.truenas %}
+| {{ h.name }} | TrueNAS {{ h.truenas.version }} | {{ 'update ' ~ h.truenas.update_version if h.truenas.update_status == 'AVAILABLE' else 'none' }} | | | | pools: {{ h.truenas.pools }} |
+{% elif h.docker %}
+| {{ h.name }} | Docker host | | | | | OS packages: see the Proxmox containers section |
+{% else %}
+| {{ h.name }} | no data | | | | | |
+{% endif %}
+{% endfor %}
+
+## Pending packages
+
+{% for h in patch_report_hosts if h.apt and h.apt.pending %}
+### {{ h.name }}
+
+{% for p in h.apt.pending %}
+- {{ p }}
+{% endfor %}
+{% if h.apt.held %}
+Held: {{ h.apt.held | join(', ') }}
+{% endif %}
+
+{% endfor %}
+## Proxmox containers
+
+{% for h in patch_report_hosts if h.lxc %}
+### {{ h.name }}
+
+| CT | Name | OS | Pending | Security |
+|---|---|---|---|---|
+{% for c in h.lxc.containers %}
+| {{ c.vmid }} | {{ c.name }} | {{ c.os }}{{ ' (probe failed)' if c.probe_failed else '' }} | {{ c.pending | length }} | {{ c.security | length }} |
+{% endfor %}
+{% if h.lxc.not_running %}
+
+Not running, not checked: {{ h.lxc.not_running | join(', ') }}
+{% endif %}
+
+{% endfor %}
+## Docker
+
+{% for h in patch_report_hosts if h.docker %}
+### {{ h.name }}
+
+| Image | Registry status |
+|---|---|
+{% for i in h.docker.images %}
+| {{ i.image }} | {{ i.status }} |
+{% endfor %}
+
+{{ h.docker.containers | length }} containers running. Compose projects managed by apply: {{ h.docker.managed_projects | join(', ') if h.docker.managed_projects else 'none' }}.
+
+{% endfor %}

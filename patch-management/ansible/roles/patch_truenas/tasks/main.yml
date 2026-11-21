@@ -1,0 +1,25 @@
+---
+# Check only. TrueNAS is an appliance: apt is locked and updates go through its own UI, so
+# apply.yml reports this host and never changes it.
+- name: Read the installed version
+  ansible.builtin.command: midclt call system.version
+  register: patch_truenas_version
+  changed_when: false
+
+- name: Ask TrueNAS whether an update is available (update.status, TrueNAS 25.10 and later)
+  ansible.builtin.command: midclt call update.status
+  register: patch_truenas_update
+  changed_when: false
+
+- name: Check pool health
+  ansible.builtin.command: zpool status -x
+  register: patch_truenas_pools
+  changed_when: false
+
+- name: Store the state
+  ansible.builtin.set_fact:
+    patch_truenas_state:
+      version: '{{ patch_truenas_version.stdout | trim | replace(''"'', '''') }}'
+      update_status: "{{ 'AVAILABLE' if (patch_truenas_update.stdout | from_json).status.new_version else 'UNAVAILABLE' }}"
+      update_version: "{{ ((patch_truenas_update.stdout | from_json).status.new_version or {}).get('version', '') }}"
+      pools: "{{ patch_truenas_pools.stdout | trim }}"

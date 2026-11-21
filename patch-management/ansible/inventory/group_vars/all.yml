@@ -1,0 +1,23 @@
+---
+# check = report only (the default). apply.yml sets this to apply.
+patch_mode: check
+# apply.yml refuses to run unless this is true: pass -e patch_confirm=true
+patch_confirm: false
+# Hosts patched at the same time in apply.yml defaults to 1 (one after the other). The play
+# keyword cannot read group_vars, so change it on the command line: -e patch_serial=2
+
+# Reboots only happen when asked for, and only if the host says one is needed.
+patch_reboot: false
+patch_reboot_proxmox: false # a PVE reboot stops every guest; needs this on top of patch_reboot
+patch_reboot_timeout: 900
+
+# Proxmox LXCs
+patch_lxc_snapshot: false # pct snapshot before patching (needs snapshot-capable storage)
+patch_lxc_skip: [] # VMIDs to leave alone. A CT tagged "nopatch" is skipped as well.
+
+# Docker
+patch_compose_projects: [] # per host: compose directories to pull and `up -d` on apply
+patch_docker_prune: false # docker image prune -f after an apply
+
+# Where check.yml and apply.yml write the report (gitignored)
+patch_reports_dir: "{{ playbook_dir }}/../../reports"

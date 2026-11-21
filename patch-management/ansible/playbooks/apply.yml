@@ -1,0 +1,57 @@
+---
+# Patch hosts, then write the report. Containers are patched before the Proxmox host that
+# runs them. TrueNAS is only checked. Needs -e patch_confirm=true.
+#   ansible-playbook playbooks/apply.yml -e patch_confirm=true
+#   ansible-playbook playbooks/apply.yml -e patch_confirm=true --limit pve-example -e patch_reboot=true
+- name: Refuse to run without confirmation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Check patch_confirm
+      ansible.builtin.assert:
+        that: patch_confirm | bool
+        fail_msg: "This changes hosts. Run check.yml first, then add -e patch_confirm=true."
+
+- name: Proxmox containers
+  hosts: proxmox
+  serial: "{{ patch_serial | default(1) }}"
+  max_fail_percentage: 0
+  vars:
+    patch_mode: apply
+  roles:
+    - patch_lxc
+
+- name: Debian, Raspberry Pi OS and Proxmox hosts
+  hosts: debian:pi_os:proxmox
+  serial: "{{ patch_serial | default(1) }}"
+  max_fail_percentage: 0
+  vars:
+    patch_mode: apply
+  roles:
+    - patch_apt
+
+- name: Docker
+  hosts: docker
+  gather_facts: false
+  serial: "{{ patch_serial | default(1) }}"
+  max_fail_percentage: 0
+  vars:
+    patch_mode: apply
+  roles:
+    - patch_docker
+
+- name: TrueNAS (check only)
+  hosts: truenas
+  gather_facts: false
+  roles:
+    - patch_truenas
+
+- name: Write the report
+  hosts: localhost
+  connection: local
+  vars:
+    ansible_become: false # the inventory enables it for the SSH targets
+    patch_mode: apply
+  roles:
+    - patch_report

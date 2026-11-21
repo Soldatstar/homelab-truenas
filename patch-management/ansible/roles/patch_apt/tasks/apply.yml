@@ -1,0 +1,19 @@
+---
+- name: Upgrade packages
+  ansible.builtin.apt:
+    upgrade: dist
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Look for a reboot marker
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: patch_apt_reboot_after
+
+- name: Reboot
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ patch_reboot_timeout }}"
+  when:
+    - patch_reboot | bool
+    - patch_apt_reboot_after.stat.exists
+    - "'proxmox' not in group_names or patch_reboot_proxmox | bool"

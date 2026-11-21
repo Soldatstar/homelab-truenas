@@ -1,0 +1,32 @@
+---
+# Copy to inventory.yml (gitignored) and fill in your own hosts. The addresses below are
+# placeholders from the documentation range.
+all:
+  vars:
+    ansible_user: patch # a dedicated user with key login and sudo, see README
+    ansible_become: true
+  children:
+    debian: # plain Debian / Ubuntu VMs and hosts
+      hosts:
+        vm-example:
+          ansible_host: 192.0.2.10
+    pi_os: # Raspberry Pi OS (Debian based, same apt handling)
+      hosts:
+        pi-example:
+          ansible_host: 192.0.2.20
+    proxmox: # Proxmox VE hosts; their LXCs are reached through `pct exec`, no SSH into the CTs
+      hosts:
+        pve-example:
+          ansible_host: 192.0.2.30
+    truenas: # check only, TrueNAS is updated from its own UI
+      hosts:
+        truenas-example:
+          ansible_host: 192.0.2.40
+          ansible_remote_tmp: /tmp/.ansible-patch # the home dataset path may contain spaces
+          ansible_user: admin
+    docker: # any host above that runs Docker; list it here as well
+      hosts:
+        vm-example:
+          # Compose directories to pull and restart on apply. Empty: report only.
+          patch_compose_projects:
+            - /opt/example

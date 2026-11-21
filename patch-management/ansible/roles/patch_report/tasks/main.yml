@@ -1,0 +1,38 @@
+---
+# Runs on localhost after the other plays. Reads the facts they stored on each host.
+- name: Collect the state of every host
+  ansible.builtin.set_fact:
+    patch_report_hosts: >-
+      {%- set out = [] -%}
+      {%- for h in groups['all'] -%}
+      {%- set v = hostvars[h] -%}
+      {%- set _ = out.append({
+        'name': h,
+        'apt': v.patch_apt_state | default(none),
+        'lxc': v.patch_lxc_state | default(none),
+        'docker': v.patch_docker_state | default(none),
+        'truenas': v.patch_truenas_state | default(none)}) -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Make sure the report directory exists
+  ansible.builtin.file:
+    path: "{{ patch_reports_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Write the Markdown report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ patch_reports_dir }}/patch-report.md"
+    mode: "0644"
+
+- name: Write the JSON report
+  ansible.builtin.copy:
+    content: "{{ {'generated': ansible_facts['date_time']['iso8601'], 'mode': patch_mode, 'hosts': patch_report_hosts} | to_nice_json }}\n"
+    dest: "{{ patch_reports_dir }}/patch-report.json"
+    mode: "0644"
+
+- name: Show where the report is
+  ansible.builtin.debug:
+    msg: "Report written to {{ patch_reports_dir }}/patch-report.md and patch-report.json"

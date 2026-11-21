@@ -1,0 +1,52 @@
+---
+- name: List running containers
+  ansible.builtin.command: docker ps --format json
+  register: patch_docker_ps
+  changed_when: false
+
+- name: Compare images with their registries
+  ansible.builtin.script: image-check.sh
+  args:
+    executable: /bin/sh
+  register: patch_docker_images
+  changed_when: false
+
+- name: Update the compose projects
+  when: patch_mode == 'apply'
+  block:
+    - name: Pull images
+      ansible.builtin.command: docker compose pull
+      args:
+        chdir: "{{ item }}"
+      changed_when: false
+      loop: "{{ patch_compose_projects }}"
+
+    - name: Recreate containers whose image changed
+      ansible.builtin.command: docker compose up -d
+      args:
+        chdir: "{{ item }}"
+      register: patch_docker_up
+      changed_when: "'Recreate' in patch_docker_up.stderr or 'Started' in patch_docker_up.stderr"
+      loop: "{{ patch_compose_projects }}"
+
+    - name: Remove unused images
+      ansible.builtin.command: docker image prune -f
+      changed_when: false
+      when: patch_docker_prune | bool
+
+- name: Store the state
+  ansible.builtin.set_fact:
+    patch_docker_state:
+      containers: >-
+        {%- set out = [] -%}
+        {%- for c in patch_docker_ps.stdout_lines | map('from_json') -%}
+        {%- set _ = out.append({'name': c.Names, 'image': c.Image, 'status': c.Status}) -%}
+        {%- endfor -%}
+        {{ out }}
+      images: >-
+        {%- set out = [] -%}
+        {%- for line in patch_docker_images.stdout_lines -%}
+        {%- set _ = out.append({'image': line.split('\t')[0], 'status': line.split('\t')[1]}) -%}
+        {%- endfor -%}
+        {{ out }}
+      managed_projects: "{{ patch_compose_projects }}"

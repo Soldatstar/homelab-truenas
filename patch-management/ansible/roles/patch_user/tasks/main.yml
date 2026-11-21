@@ -1,0 +1,33 @@
+---
+- name: Read the public key
+  ansible.builtin.set_fact:
+    patch_user_key: "{{ patch_user_public_key if patch_user_public_key | length > 0 else lookup('ansible.builtin.file', patch_user_key_file) }}"
+  no_log: true
+
+- name: Install sudo (Proxmox and minimal images do not ship it)
+  ansible.builtin.apt:
+    name: sudo
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the patch user
+  ansible.builtin.user:
+    name: "{{ patch_user_name }}"
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+
+- name: Authorize the key
+  ansible.posix.authorized_key:
+    user: "{{ patch_user_name }}"
+    key: "{{ patch_user_key }}"
+
+- name: Allow sudo
+  ansible.builtin.copy:
+    content: "{{ patch_user_name }} ALL=(ALL) {{ 'NOPASSWD: ' if patch_user_sudo_nopasswd | bool else '' }}ALL\n"
+    dest: "/etc/sudoers.d/{{ patch_user_name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s

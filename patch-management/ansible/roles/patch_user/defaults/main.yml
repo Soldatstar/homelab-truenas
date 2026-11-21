@@ -1,0 +1,9 @@
+---
+patch_user_name: patch
+# Public key (not a secret) of the machine you run ansible from. Set it in the inventory,
+# or leave it empty to read patch_user_key_file.
+patch_user_public_key: ""
+patch_user_key_file: ~/.ssh/id_ed25519.pub
+# The account has no password (login is by key only), so sudo can only work without one.
+# Set false only if you also give the account a password yourself.
+patch_user_sudo_nopasswd: true

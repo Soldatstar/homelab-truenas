@@ -1,0 +1,41 @@
+---
+- name: Refresh package lists
+  ansible.builtin.apt:
+    update_cache: true
+  changed_when: false
+
+- name: Simulate a dist-upgrade
+  ansible.builtin.command: apt-get -s dist-upgrade # noqa: command-instead-of-module
+  register: patch_apt_sim
+  changed_when: false
+
+- name: List held packages
+  ansible.builtin.command: apt-mark showhold
+  register: patch_apt_hold
+  changed_when: false
+
+- name: Look for a reboot marker
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: patch_apt_reboot
+
+- name: Read the Proxmox version
+  ansible.builtin.command: pveversion
+  register: patch_apt_pve
+  changed_when: false
+  when: "'proxmox' in group_names"
+
+- name: Store the state
+  ansible.builtin.set_fact:
+    patch_apt_state:
+      os: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+      kernel: "{{ ansible_facts['kernel'] }}"
+      proxmox: "{{ (patch_apt_pve.stdout | default('')) | trim }}"
+      pending: >-
+        {{ patch_apt_sim.stdout_lines | select('match', '^Inst ')
+           | map('regex_replace', '^Inst (\S+)(?: \[(\S+)\])? \((\S+) .*', '\1: \2 -> \3') | list }}
+      security: >-
+        {{ patch_apt_sim.stdout_lines | select('match', '^Inst ') | select('search', '[Ss]ecurity')
+           | map('regex_replace', '^Inst (\S+).*', '\1') | list }}
+      held: "{{ patch_apt_hold.stdout_lines }}"
+      reboot_required: "{{ patch_apt_reboot.stat.exists }}"

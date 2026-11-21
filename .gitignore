@@ -53,3 +53,8 @@ llm-server/ansible/inventory/group_vars/llm/vault.yml
 
 # Local Ansible collection/role cache (ansible-galaxy)
 .ansible/
+
+# Patch management: real inventory and generated reports (the .example is tracked)
+patch-management/ansible/inventory/inventory.yml
+patch-management/reports/*
+!patch-management/reports/.gitkeep

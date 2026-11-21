@@ -1,0 +1,32 @@
+---
+# Report what is pending on every host. Changes nothing except the apt package lists.
+#   ansible-playbook playbooks/check.yml
+- name: Debian, Raspberry Pi OS and Proxmox hosts
+  hosts: debian:pi_os:proxmox
+  roles:
+    - patch_apt
+
+- name: Proxmox containers
+  hosts: proxmox
+  roles:
+    - patch_lxc
+
+- name: Docker
+  hosts: docker
+  gather_facts: false
+  roles:
+    - patch_docker
+
+- name: TrueNAS
+  hosts: truenas
+  gather_facts: false
+  roles:
+    - patch_truenas
+
+- name: Write the report
+  hosts: localhost
+  connection: local
+  vars:
+    ansible_become: false # the inventory enables it for the SSH targets
+  roles:
+    - patch_report

@@ -1,0 +1,21 @@
+---
+# Debian, Raspberry Pi OS and Proxmox hosts. Held packages (apt-mark hold) are respected.
+- name: Check pending updates
+  ansible.builtin.include_tasks: check.yml
+
+- name: Patch the host
+  when: patch_mode == 'apply'
+  block:
+    - name: Remember what was pending
+      ansible.builtin.set_fact:
+        patch_apt_before: "{{ patch_apt_state }}"
+
+    - name: Apply updates
+      ansible.builtin.include_tasks: apply.yml
+
+    - name: Check what is still pending
+      ansible.builtin.include_tasks: check.yml
+
+    - name: Record the before and after
+      ansible.builtin.set_fact:
+        patch_apt_state: "{{ patch_apt_state | combine({'applied': patch_apt_before.pending}) }}"

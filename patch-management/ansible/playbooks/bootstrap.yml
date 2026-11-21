@@ -1,0 +1,11 @@
+---
+# One-off: create the patch user on every host that is patched over SSH. Run it with a login
+# that already has sudo on the target. TrueNAS is left out (create the user in its UI).
+# Use -e ansible_user=..., not -u: the inventory sets ansible_user and wins over -u.
+#   ansible-playbook playbooks/bootstrap.yml -e ansible_user=<existing-user> --ask-pass --ask-become-pass
+#   ansible-playbook playbooks/bootstrap.yml -e ansible_user=<existing-user> --limit docker1 --ask-become-pass
+- name: Create the patch user
+  hosts: all:!truenas
+  become: true
+  roles:
+    - patch_user
