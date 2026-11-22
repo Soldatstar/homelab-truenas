@@ -10,8 +10,9 @@ files. Work from WSL with the repo in `~/homelab-truenas`, not under `/mnt/c`.
   `NEXT-STEPS.md`, `VERSIONS.md`.
 - `k3s-cluster/`: Terraform + Ansible for a k3s cluster. `terraform.tfvars` is gitignored.
 - `patch-management/`: Ansible that reports and applies updates to Debian, Pi OS, Proxmox (incl.
-  LXCs), Docker and TrueNAS hosts. See its `README.md`. The real `inventory.yml` and `reports/` are
-  gitignored.
+  LXCs), Docker and TrueNAS hosts, scans them for CVEs with Trivy, and deploys a daily scanner
+  container with a Grafana dashboard. See its `README.md`. The real `inventory.yml` and `reports/`
+  are gitignored.
 - Top-level `README.md`: TrueNAS notes, unrelated to the LLM host.
 
 ## Rules
