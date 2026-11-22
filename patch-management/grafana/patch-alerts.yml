@@ -1,0 +1,30 @@
+# Prometheus alert rules for the daily patch and CVE scan. Add to your rule files and reload.
+# Alerts are limited to things that need a decision; the dashboard shows the rest.
+groups:
+  - name: patch-management
+    rules:
+      - alert: ExploitedCveOnExposedTarget
+        expr: sum(patch_cve_findings{exposure="direct", exploited="yes"}) > 0
+        for: 1h
+        labels: {severity: critical}
+        annotations:
+          summary: "Known-exploited CVE on a directly exposed target"
+          description: "{{ $value }} CVE(s) on the CISA known-exploited list affect a service reachable from the internet. See cve-report.md."
+      - alert: PatchScanStale
+        expr: time() - patch_report_timestamp_seconds{report="cve"} > 36 * 3600
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "The daily CVE scan has not produced a report for over 36 hours"
+      - alert: PatchScanErrors
+        expr: patch_cve_scan_errors > 3
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} targets could not be scanned"
+      - alert: ExposedTargetsNotPatchable
+        expr: sum(patch_cve_findings{exposure="direct", fix="no", exploited="yes"}) > 0
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "A known-exploited CVE on an exposed target has no fix yet; reduce exposure"
