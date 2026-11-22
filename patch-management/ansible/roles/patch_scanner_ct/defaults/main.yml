@@ -1,0 +1,15 @@
+---
+# Settings for the container that runs the daily scan. Override per Proxmox node in the inventory.
+patch_scanner_ct_vmid: 104
+patch_scanner_ct_hostname: patch-scanner
+patch_scanner_ct_cidr: 192.0.2.42/24 # set the real address in inventory.yml
+patch_scanner_ct_gateway: 192.0.2.1
+patch_scanner_ct_bridge: vmbr0
+patch_scanner_ct_storage: local-zfs-repl
+patch_scanner_ct_disk_gib: 20
+patch_scanner_ct_cores: 2
+patch_scanner_ct_memory_mib: 4096
+patch_scanner_ct_template: debian-13-standard_13.6-1_amd64.tar.zst
+patch_scanner_ct_template_storage: local
+# Public key that gets root access to the new container (yours, not a secret)
+patch_scanner_ct_key_file: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub"

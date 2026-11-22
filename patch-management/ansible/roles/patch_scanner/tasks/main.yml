@@ -1,0 +1,121 @@
+---
+# Runs inside the scanner container, connected as root. The daily job runs as an ordinary user.
+- name: Install the tools
+  ansible.builtin.apt:
+    name:
+      - ansible
+      - rsync
+      - openssh-client
+      - curl
+      - ca-certificates
+      - nginx
+      - prometheus-node-exporter
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the scanner user with its own SSH key
+  ansible.builtin.user:
+    name: "{{ patch_scanner_user }}"
+    shell: /bin/bash
+    create_home: true
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_comment: "patch-scanner"
+  register: patch_scanner_account
+
+- name: Remember the scanner's public key
+  ansible.builtin.set_fact:
+    patch_scanner_pubkey: "{{ patch_scanner_account.ssh_public_key }}"
+
+- name: Trust the host keys of every target (checked from the machine running this play)
+  ansible.builtin.known_hosts:
+    path: "{{ patch_scanner_home }}/.ssh/known_hosts"
+    name: "{{ hostvars[item].ansible_host }}"
+    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -T 5 -t ed25519,ecdsa,rsa ' ~ hostvars[item].ansible_host ~ ' 2>/dev/null | grep -v ^# | head -n 1') }}"
+  when: hostvars[item].ansible_host is defined
+  loop: "{{ groups['all'] | difference(groups['scanner']) }}"
+
+- name: Fix ownership of the known hosts file
+  ansible.builtin.file:
+    path: "{{ patch_scanner_home }}/.ssh/known_hosts"
+    owner: "{{ patch_scanner_user }}"
+    group: "{{ patch_scanner_user }}"
+    mode: "0644"
+  failed_when: false
+
+- name: Copy the project (including the local inventory) to the scanner
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../../"
+    dest: "{{ patch_scanner_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=reports/*"
+      - "--exclude=__pycache__"
+      - "--exclude=.ansible"
+      - "--chown={{ patch_scanner_user }}:{{ patch_scanner_user }}"
+
+- name: Put the metrics exporter next to the project
+  ansible.builtin.copy:
+    src: export_metrics.py
+    dest: "{{ patch_scanner_dir }}/export_metrics.py"
+    owner: "{{ patch_scanner_user }}"
+    group: "{{ patch_scanner_user }}"
+    mode: "0755"
+
+- name: Make the report directory
+  ansible.builtin.file:
+    path: "{{ patch_scanner_dir }}/reports"
+    state: directory
+    owner: "{{ patch_scanner_user }}"
+    group: "{{ patch_scanner_user }}"
+    mode: "0755"
+
+- name: Let the scanner write the metrics file
+  ansible.builtin.file:
+    path: "{{ patch_scanner_textfile_dir }}"
+    state: directory
+    owner: "{{ patch_scanner_user }}"
+    mode: "0755"
+
+- name: Install the daily job
+  ansible.builtin.template:
+    src: patch-scan-daily.sh.j2
+    dest: /usr/local/bin/patch-scan-daily
+    mode: "0755"
+
+- name: Install the systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - patch-scan.service
+    - patch-scan.timer
+  notify: Reload systemd
+
+- name: Serve the reports to the LAN
+  ansible.builtin.template:
+    src: nginx-patch-reports.conf.j2
+    dest: /etc/nginx/conf.d/patch-reports.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Remove the default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Start the services
+  ansible.builtin.systemd:
+    name: "{{ item.name }}"
+    enabled: true
+    state: "{{ item.state }}"
+  loop:
+    - {name: nginx, state: started}
+    - {name: prometheus-node-exporter, state: started}
+    - {name: patch-scan.timer, state: started}

@@ -1,0 +1,12 @@
+# Managed by Ansible (patch_scanner)
+[Unit]
+Description=Daily patch check and CVE scan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ patch_scanner_user }}
+ExecStart=/usr/local/bin/patch-scan-daily
+TimeoutStartSec=3h
+Nice=10

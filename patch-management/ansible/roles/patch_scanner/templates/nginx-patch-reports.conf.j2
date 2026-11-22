@@ -1,0 +1,14 @@
+# Managed by Ansible (patch_scanner): the report files, readable from the LAN only
+server {
+    listen {{ patch_scanner_web_port }};
+    server_name _;
+    allow {{ patch_scanner_web_allow }};
+    deny all;
+    root {{ patch_scanner_dir }}/reports;
+    autoindex on;
+    default_type text/plain;
+    types {
+        application/json json;
+        text/markdown md;
+    }
+}

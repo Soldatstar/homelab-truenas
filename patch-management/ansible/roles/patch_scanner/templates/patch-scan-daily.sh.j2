@@ -1,0 +1,18 @@
+#!/bin/bash
+# Managed by Ansible (patch_scanner). Daily: patch check, CVE scan, metrics. Reporting only.
+set -uo pipefail
+cd {{ patch_scanner_dir }}/ansible
+hc() {
+{% if patch_scanner_healthcheck_url | length > 0 %}
+  curl -fsS -m 10 --retry 3 "{{ patch_scanner_healthcheck_url }}$1" >/dev/null || true
+{% else %}
+  :
+{% endif %}
+}
+hc /start
+rc=0
+ansible-playbook playbooks/check.yml || rc=1
+ansible-playbook playbooks/cve-scan.yml || rc=1
+python3 {{ patch_scanner_dir }}/export_metrics.py {{ patch_scanner_dir }}/reports {{ patch_scanner_textfile_dir }}/patch_management.prom || rc=1
+if [ "$rc" -eq 0 ]; then hc ""; else hc /fail; fi
+exit "$rc"

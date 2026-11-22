@@ -1,0 +1,11 @@
+---
+patch_scanner_user: scanner
+patch_scanner_home: /home/scanner
+# Project copy on the scanner; updated every time scanner.yml runs
+patch_scanner_dir: "{{ patch_scanner_home }}/patch-management"
+patch_scanner_run_time: "05:00:00"
+patch_scanner_web_port: 8080
+patch_scanner_web_allow: 192.0.2.0/24 # LAN allowed to read the report page (set in inventory.yml)
+# healthchecks.io style URL: pinged at the end of a good run, "/fail" appended on failure. Empty = off.
+patch_scanner_healthcheck_url: ""
+patch_scanner_textfile_dir: /var/lib/prometheus/node-exporter

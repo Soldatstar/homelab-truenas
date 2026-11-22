@@ -1,0 +1,48 @@
+---
+# Create and configure the container that runs check.yml and cve-scan.yml every day.
+#   ansible-playbook playbooks/scanner.yml
+# Needs a Proxmox host with patch_scanner_ct_enabled: true and a host in the `scanner` group
+# (see inventory.yml.example). Run it again to push a newer copy of the project.
+- name: Create the scanner container
+  hosts: proxmox
+  gather_facts: false
+  tasks:
+    - name: Create it on this node
+      ansible.builtin.include_role:
+        name: patch_scanner_ct
+      when: patch_scanner_ct_enabled | default(false) | bool
+
+- name: Configure the scanner
+  hosts: scanner
+  gather_facts: true
+  vars:
+    ansible_user: root # the patch user does not exist yet; the container has your key for root
+    ansible_become: false
+  pre_tasks:
+    - name: Wait for the container to accept SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+  roles:
+    - patch_scanner
+
+- name: Let the scanner log in to the targets
+  hosts: all:!truenas:!scanner
+  gather_facts: false
+  vars:
+    patch_user_public_key: "{{ hostvars[groups['scanner'][0]].patch_scanner_pubkey }}"
+  roles:
+    - patch_user
+
+- name: What is left to do by hand
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_become: false
+  tasks:
+    - name: Show the scanner's key
+      ansible.builtin.debug:
+        msg:
+          - "TrueNAS is not configured by Ansible. Add this key to the 'patch' user's SSH key field:"
+          - "{{ hostvars[groups['scanner'][0]].patch_scanner_pubkey }}"
+          - "Then start a first run on the scanner: sudo systemctl start patch-scan.service"

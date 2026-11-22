@@ -1,0 +1,62 @@
+---
+# Runs on one Proxmox node. Creates the container once; an existing one is left alone.
+- name: Check whether the container exists
+  ansible.builtin.command: pct status {{ patch_scanner_ct_vmid }}
+  register: patch_scanner_ct_status
+  changed_when: false
+  failed_when: false
+
+- name: Create the container
+  when: patch_scanner_ct_status.rc != 0
+  block:
+    - name: List downloaded templates
+      ansible.builtin.command: pveam list {{ patch_scanner_ct_template_storage }}
+      register: patch_scanner_ct_templates
+      changed_when: false
+
+    - name: Download the template
+      ansible.builtin.command: pveam download {{ patch_scanner_ct_template_storage }} {{ patch_scanner_ct_template }}
+      changed_when: true
+      when: patch_scanner_ct_template not in patch_scanner_ct_templates.stdout
+
+    - name: Put the public key on the node
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.file', patch_scanner_ct_key_file) }}\n"
+        dest: /root/.patch-scanner-root.pub
+        mode: "0600"
+
+    - name: Create and start the container
+      ansible.builtin.command:
+        argv:
+          - pct
+          - create
+          - "{{ patch_scanner_ct_vmid }}"
+          - "{{ patch_scanner_ct_template_storage }}:vztmpl/{{ patch_scanner_ct_template }}"
+          - --hostname
+          - "{{ patch_scanner_ct_hostname }}"
+          - --unprivileged
+          - "1"
+          - --cores
+          - "{{ patch_scanner_ct_cores }}"
+          - --memory
+          - "{{ patch_scanner_ct_memory_mib }}"
+          - --swap
+          - "512"
+          - --rootfs
+          - "{{ patch_scanner_ct_storage }}:{{ patch_scanner_ct_disk_gib }}"
+          - --net0
+          - "name=eth0,bridge={{ patch_scanner_ct_bridge }},ip={{ patch_scanner_ct_cidr }},gw={{ patch_scanner_ct_gateway }}"
+          - --ssh-public-keys
+          - /root/.patch-scanner-root.pub
+          - --tags
+          - patch-scanner
+          - --onboot
+          - "1"
+          - --start
+          - "1"
+      changed_when: true
+
+    - name: Remove the key file
+      ansible.builtin.file:
+        path: /root/.patch-scanner-root.pub
+        state: absent

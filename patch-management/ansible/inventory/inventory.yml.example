@@ -18,6 +18,11 @@ all:
       hosts:
         pve-example:
           ansible_host: 192.0.2.30
+          # Create the daily scanner container on this node (playbooks/scanner.yml)
+          patch_scanner_ct_enabled: true
+          patch_scanner_ct_vmid: 104
+          patch_scanner_ct_cidr: 192.0.2.42/24
+          patch_scanner_ct_gateway: 192.0.2.1
     truenas: # check only, TrueNAS is updated from its own UI
       hosts:
         truenas-example:
@@ -30,3 +35,10 @@ all:
           # Compose directories to pull and restart on apply. Empty: report only.
           patch_compose_projects:
             - /opt/example
+    scanner: # the container that runs the daily check and CVE scan
+      hosts:
+        patch-scanner:
+          ansible_host: 192.0.2.42
+      vars:
+        patch_scanner_web_allow: 192.0.2.0/24
+        patch_scanner_healthcheck_url: "" # optional healthchecks.io ping URL

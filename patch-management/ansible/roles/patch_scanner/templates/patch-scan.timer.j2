@@ -1,0 +1,11 @@
+# Managed by Ansible (patch_scanner)
+[Unit]
+Description=Run the patch check and CVE scan every day
+
+[Timer]
+OnCalendar=*-*-* {{ patch_scanner_run_time }}
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
