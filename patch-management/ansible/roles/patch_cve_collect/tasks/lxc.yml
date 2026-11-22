@@ -1,0 +1,45 @@
+---
+- name: List containers
+  ansible.builtin.command: pvesh get /nodes/{{ ansible_facts['hostname'] }}/lxc --output-format json
+  register: patch_cve_collect_list
+  changed_when: false
+
+- name: Pick the running containers
+  ansible.builtin.set_fact:
+    patch_cve_collect_cts: >-
+      {{ patch_cve_collect_list.stdout | from_json
+         | selectattr('status', 'eq', 'running') | list }}
+
+- name: Name the files Trivy needs
+  ansible.builtin.set_fact:
+    patch_cve_collect_paths:
+      - /etc/os-release
+      - /etc/debian_version
+      - /etc/lsb-release
+      - /etc/alpine-release
+      - /var/lib/dpkg/status
+      - /lib/apk/db/installed
+
+- name: Read the package database of each container
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ item.0.vmid }}", --, cat, "{{ item.1 }}"]
+  register: patch_cve_collect_files
+  changed_when: false
+  failed_when: false # Alpine has no dpkg, Debian has no apk: a missing file is fine
+  loop: "{{ patch_cve_collect_cts | product(patch_cve_collect_paths) | list }}"
+  loop_control:
+    label: "{{ item.0.vmid }} {{ item.1 }}"
+
+- name: Store the files for the scan
+  ansible.builtin.copy:
+    content: >-
+      {%- set out = [] -%}
+      {%- for r in patch_cve_collect_files.results if r.rc == 0 -%}
+      {%- set _ = out.append({'vmid': r.item.0.vmid, 'name': r.item.0.name, 'path': r.item.1, 'content': r.stdout}) -%}
+      {%- endfor -%}
+      {{ out | to_json }}
+    dest: "{{ patch_cve_workdir }}/lxc/{{ inventory_hostname }}.json"
+    mode: "0600"
+  delegate_to: localhost
+  vars:
+    ansible_become: false

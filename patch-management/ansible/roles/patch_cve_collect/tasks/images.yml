@@ -1,0 +1,23 @@
+---
+- name: Read the running images
+  ansible.builtin.script:
+    cmd: images.sh
+  args:
+    executable: /bin/sh
+  register: patch_cve_collect_images
+  changed_when: false
+
+- name: Store the image list for the scan
+  ansible.builtin.copy:
+    content: >-
+      {%- set out = [] -%}
+      {%- for line in patch_cve_collect_images.stdout_lines if line.count('\t') == 4 -%}
+      {%- set f = line.split('\t') -%}
+      {%- set _ = out.append({'ref': f[0], 'id': f[1], 'digests': f[2].split(',') if f[2] else [], 'name': f[3], 'project': f[4]}) -%}
+      {%- endfor -%}
+      {{ out | to_json }}
+    dest: "{{ patch_cve_workdir }}/images/{{ inventory_hostname }}.json"
+    mode: "0600"
+  delegate_to: localhost
+  vars:
+    ansible_become: false

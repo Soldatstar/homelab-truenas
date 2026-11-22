@@ -1,0 +1,14 @@
+---
+# Only a few small, world-readable files leave the host. Trivy finds the OS from
+# debian_version, lsb-release (Ubuntu) or alpine-release, not from os-release alone.
+- name: Fetch the package database
+  ansible.builtin.fetch:
+    src: "{{ item }}"
+    dest: "{{ patch_cve_workdir }}/rootfs/"
+    flat: false
+    fail_on_missing: false
+  loop:
+    - /etc/os-release
+    - /etc/debian_version
+    - /etc/lsb-release
+    - /var/lib/dpkg/status

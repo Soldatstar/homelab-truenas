@@ -21,3 +21,12 @@ patch_docker_prune: false # docker image prune -f after an apply
 
 # Where check.yml and apply.yml write the report (gitignored)
 patch_reports_dir: "{{ playbook_dir }}/../../reports"
+
+# CVE scan (playbooks/cve-scan.yml). The scan runs on this machine; hosts only hand over data.
+patch_cve_workdir: "{{ lookup('env', 'HOME') }}/.cache/patch-management" # package lists and image digests, outside the repo
+patch_cve_min_cvss: 8.5 # report CVEs at or above this score; known-exploited ones always
+# Exposure (set in inventory.yml, not here: group_vars/all.yml would override it):
+#   patch_cve_exposure:
+#     direct: [npmplus, immich, jellyfin] # substrings of image, container or compose project
+#     tunnel: []
+#   patch_cve_exposed_hosts: [truenas-scale, pve3-ct102-docker-3] # hosts or containers (node-ctID-name) reachable from outside

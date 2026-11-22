@@ -1,0 +1,75 @@
+---
+- name: Make the install directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ patch_cve_scan_install_dir }}/{{ patch_cve_scan_trivy_version }}"
+    - "{{ patch_cve_scan_bin | dirname }}"
+
+- name: Download Trivy (the hash is checked)
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/aquasecurity/trivy/releases/download/v{{ patch_cve_scan_trivy_version }}/trivy_{{ patch_cve_scan_trivy_version }}_Linux-64bit.tar.gz
+    dest: "{{ patch_cve_scan_install_dir }}/{{ patch_cve_scan_trivy_version }}/trivy.tar.gz"
+    checksum: "sha256:{{ patch_cve_scan_trivy_sha256 }}"
+    mode: "0644"
+
+- name: Unpack Trivy
+  ansible.builtin.unarchive:
+    src: "{{ patch_cve_scan_install_dir }}/{{ patch_cve_scan_trivy_version }}/trivy.tar.gz"
+    dest: "{{ patch_cve_scan_install_dir }}/{{ patch_cve_scan_trivy_version }}"
+    remote_src: true
+    include: [trivy]
+    creates: "{{ patch_cve_scan_install_dir }}/{{ patch_cve_scan_trivy_version }}/trivy"
+
+- name: Link the pinned version
+  ansible.builtin.file:
+    src: "{{ patch_cve_scan_install_dir }}/{{ patch_cve_scan_trivy_version }}/trivy"
+    dest: "{{ patch_cve_scan_bin }}"
+    state: link
+
+- name: Update the vulnerability database
+  ansible.builtin.command: "{{ patch_cve_scan_bin }} image --download-db-only --quiet"
+  changed_when: false
+
+- name: Update the Java vulnerability database (images with .jar files need it)
+  ansible.builtin.command: "{{ patch_cve_scan_bin }} image --download-java-db-only --quiet"
+  changed_when: false
+
+- name: Download the known-exploited list (CISA KEV)
+  ansible.builtin.get_url:
+    url: "{{ patch_cve_scan_kev_url }}"
+    dest: "{{ patch_cve_workdir }}/kev.json"
+    mode: "0600"
+    force: true
+    timeout: 30
+  failed_when: false # the report works without it and says so
+
+- name: Write the scan settings
+  ansible.builtin.copy:
+    content: "{{ settings | to_nice_json }}\n"
+    dest: "{{ patch_cve_workdir }}/settings.json"
+    mode: "0600"
+  vars:
+    settings:
+      min_cvss: "{{ patch_cve_min_cvss }}"
+      exposure: "{{ patch_cve_exposure | default({}) }}"
+      exposed_hosts: "{{ patch_cve_exposed_hosts | default([]) }}"
+
+- name: Scan and write the report
+  ansible.builtin.script:
+    cmd: >-
+      cve_report.py
+      --workdir {{ patch_cve_workdir | quote }}
+      --trivy {{ patch_cve_scan_bin | quote }}
+      --reports-dir {{ patch_reports_dir | quote }}
+      --patch-report {{ (patch_reports_dir ~ '/patch-report.json') | quote }}
+    executable: python3
+  register: patch_cve_scan_run
+  changed_when: false
+
+- name: Summary
+  ansible.builtin.debug:
+    msg: "{{ patch_cve_scan_run.stdout_lines }}"

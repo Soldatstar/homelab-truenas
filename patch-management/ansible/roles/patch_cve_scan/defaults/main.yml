@@ -1,0 +1,8 @@
+---
+# Pinned on purpose. To update: take the new version's Linux-64bit tarball hash from the
+# release's trivy_<version>_checksums.txt and change both lines.
+patch_cve_scan_trivy_version: 0.76.2
+patch_cve_scan_trivy_sha256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+patch_cve_scan_install_dir: "{{ lookup('env', 'HOME') }}/.local/share/trivy"
+patch_cve_scan_bin: "{{ lookup('env', 'HOME') }}/.local/bin/trivy"
+patch_cve_scan_kev_url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
