@@ -5,7 +5,8 @@
   changed_when: false
 
 - name: Compare images with their registries
-  ansible.builtin.script: image-check.sh
+  ansible.builtin.script:
+    cmd: image-check.sh {{ patch_docker_skip_project_prefix | quote }}
   args:
     executable: /bin/sh
   register: patch_docker_images
@@ -39,13 +40,15 @@
     patch_docker_state:
       containers: >-
         {%- set out = [] -%}
-        {%- for c in patch_docker_ps.stdout_lines | map('from_json') -%}
+        {%- for c in patch_docker_ps.stdout_lines | map('from_json')
+            if not patch_docker_skip_project_prefix
+            or ('com.docker.compose.project=' ~ patch_docker_skip_project_prefix) not in c.Labels -%}
         {%- set _ = out.append({'name': c.Names, 'image': c.Image, 'status': c.Status}) -%}
         {%- endfor -%}
         {{ out }}
       images: >-
         {%- set out = [] -%}
-        {%- for line in patch_docker_images.stdout_lines -%}
+        {%- for line in patch_docker_images.stdout_lines if '\t' in line -%}
         {%- set _ = out.append({'image': line.split('\t')[0], 'status': line.split('\t')[1]}) -%}
         {%- endfor -%}
         {{ out }}

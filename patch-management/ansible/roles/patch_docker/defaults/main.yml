@@ -1,0 +1,5 @@
+---
+# Compose projects whose name starts with this are left out of the Docker report. Empty (the
+# default) lists everything. apply.yml only ever updates the directories in patch_compose_projects,
+# so TrueNAS catalog apps (project ix-<app>) are reported but never changed. Set "ix-" to hide them.
+patch_docker_skip_project_prefix: ""
