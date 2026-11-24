@@ -48,6 +48,10 @@ ansible-playbook playbooks/apply.yml -e patch_confirm=true
 ansible-playbook playbooks/apply.yml -e patch_confirm=true --limit vm-example -e patch_reboot=true
 ```
 
+`-e patch_scope=host|lxc|stacks` narrows what is patched: `host` is the OS packages of SSH hosts and
+Proxmox nodes without their containers, `lxc` the containers without the nodes (`-e '{"patch_lxc_only": [100]}'`
+for one), `stacks` the Docker compose projects. The `patch_confirm` check now also holds with `--limit`.
+
 `apply.yml` handles one host at a time (`-e patch_serial=2` for more), stops a batch when a host
 fails, patches a Proxmox host's containers before the host itself, and rewrites the report with
 what was applied and what is still pending.
@@ -127,10 +131,46 @@ minutes (image downloads); later ones take a few minutes.
 - **Security.** The scanner's key gives passwordless root on every host, because `patch` has
   full sudo. Keep that container locked down: no inbound access except SSH from your admin
   machine, port 8080 and the metrics port from your LAN.
+- **Reports:** `http://<scanner-address>:8080/` lists `cve-report.md`, `cve-report.json`, `patch-report.md`
+  and `patch-report.json`. They live in `/var/lib/patch-reports` on the scanner (not under the home
+  directory, which nginx cannot read) and are readable only from `patch_scanner_web_allow`.
 - Start a run by hand: `ssh root@<scanner> systemctl start patch-scan.service`; follow it with
   `journalctl -u patch-scan.service -f`.
 - Optional: set `patch_scanner_healthcheck_url` to a healthchecks.io URL to get a ping when a
   run finishes and a failure ping when it does not.
+
+### Patch control page
+
+`https://<scanner-address>:8443/` (user `patch`) lists what can be updated, with pending updates,
+security updates and fixable critical CVEs per target, grouped as hosts, Proxmox containers,
+Docker stacks and Proxmox nodes. Tick targets (or use "Select all with fixable critical CVEs"),
+review the plan with the exact commands, confirm, and watch the log. Afterwards the patch report
+is refreshed, so Grafana shows the new state. The dashboard links to it, and a host name in the
+"Updates per host" table opens the page on that row. Set the dashboard's `Patch control URL`
+variable once after importing.
+
+**Scan now** at the top runs the same check and CVE scan as the daily timer (about 5 minutes) and
+shows the last scan time. It changes nothing, so it needs no review step. It shares the one-job lock
+with patch jobs: a scan waits for a running patch job and the other way round, and a scheduled run
+waits for either.
+
+Safeguards, all enforced on the server:
+
+- The browser only sends target ids. The page builds the commands itself from the latest reports,
+  so nothing typed into it can reach a shell.
+- Every change needs a plan, then a confirmation, with a one-time token. One job runs at a time and
+  stops at the first target that fails.
+- It never reboots. Proxmox nodes are never in a bulk selection, and only one node per plan.
+- Not offered: TrueNAS, TrueNAS catalog apps (`ix-` projects), and stacks on hosts in
+  `patch_scanner_control_no_stacks` (default `llmviktor`, whose image digests are pinned on purpose).
+- Stacks are offered from what the scan found running, with their compose directory. No inventory
+  list is needed.
+- Login: nginx asks for a password, generated once and kept in
+  `~/.cache/patch-management/patch-control-password` on the machine that ran `scanner.yml`. The
+  certificate is self-signed, so the browser warns once. Only `patch_scanner_web_allow` can connect.
+
+Anyone who can log in can start updates on every host through the scanner's key, so treat the
+password like an SSH key.
 
 ### Dashboard and alerts
 
