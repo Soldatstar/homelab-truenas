@@ -1,0 +1,21 @@
+# Managed by Ansible (patch_scanner)
+[Unit]
+Description=Patch control page (review and run updates)
+After=network-online.target
+
+[Service]
+User={{ patch_scanner_user }}
+ExecStart=/usr/bin/python3 {{ patch_scanner_control_dir }}/patch_control.py \
+  --project {{ patch_scanner_dir }} \
+  --reports {{ patch_scanner_reports_dir }} \
+  --workdir {{ patch_scanner_home }}/.cache/patch-management \
+  --state {{ patch_scanner_control_state }} \
+  --prom {{ patch_scanner_textfile_dir }}/patch_management.prom \
+  --no-stacks {{ patch_scanner_control_no_stacks | join(',') }}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

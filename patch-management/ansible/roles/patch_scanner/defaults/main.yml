@@ -3,9 +3,22 @@ patch_scanner_user: scanner
 patch_scanner_home: /home/scanner
 # Project copy on the scanner; updated every time scanner.yml runs
 patch_scanner_dir: "{{ patch_scanner_home }}/patch-management"
+# Where the reports are written and served from. Not under the home directory: nginx cannot enter it.
+patch_scanner_reports_dir: /var/lib/patch-reports
 patch_scanner_run_time: "05:00:00"
 patch_scanner_web_port: 8080
 patch_scanner_web_allow: 192.0.2.0/24 # LAN allowed to read the report page (set in inventory.yml)
 # healthchecks.io style URL: pinged at the end of a good run, "/fail" appended on failure. Empty = off.
 patch_scanner_healthcheck_url: ""
 patch_scanner_textfile_dir: /var/lib/prometheus/node-exporter
+
+# Patch control page (patch_control.py): review and run updates from a browser. It listens on
+# localhost; nginx adds TLS, the LAN allow list and a login (user patch, generated password).
+patch_scanner_control_tls_port: 8443
+patch_scanner_control_user: patch
+# Hosts whose Docker stacks the page must never offer (the LLM host pins its image digests on purpose)
+patch_scanner_control_no_stacks: [llmviktor]
+# The generated login is kept here on the machine running Ansible, outside the repository
+patch_scanner_control_password_file: "{{ lookup('env', 'HOME') }}/.cache/patch-management/patch-control-password"
+patch_scanner_control_dir: /usr/local/lib/patch-control
+patch_scanner_control_state: /var/lib/patch-control

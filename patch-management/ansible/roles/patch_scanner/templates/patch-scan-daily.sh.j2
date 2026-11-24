@@ -1,6 +1,9 @@
 #!/bin/bash
 # Managed by Ansible (patch_scanner). Daily: patch check, CVE scan, metrics. Reporting only.
 set -uo pipefail
+# One job at a time: wait (up to 2 hours) while a patch job from the control page is running.
+exec 9>"{{ patch_scanner_control_state }}/job.lock"
+if ! flock -w 7200 9; then echo "another job still holds the lock"; exit 1; fi
 cd {{ patch_scanner_dir }}/ansible
 hc() {
 {% if patch_scanner_healthcheck_url | length > 0 %}
@@ -11,8 +14,8 @@ hc() {
 }
 hc /start
 rc=0
-ansible-playbook playbooks/check.yml || rc=1
-ansible-playbook playbooks/cve-scan.yml || rc=1
-python3 {{ patch_scanner_dir }}/export_metrics.py {{ patch_scanner_dir }}/reports {{ patch_scanner_textfile_dir }}/patch_management.prom || rc=1
+ansible-playbook playbooks/check.yml -e patch_reports_dir={{ patch_scanner_reports_dir }} || rc=1
+ansible-playbook playbooks/cve-scan.yml -e patch_reports_dir={{ patch_scanner_reports_dir }} || rc=1
+python3 {{ patch_scanner_dir }}/export_metrics.py {{ patch_scanner_reports_dir }} {{ patch_scanner_textfile_dir }}/patch_management.prom || rc=1
 if [ "$rc" -eq 0 ]; then hc ""; else hc /fail; fi
 exit "$rc"

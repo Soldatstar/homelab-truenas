@@ -9,6 +9,7 @@
       - curl
       - ca-certificates
       - nginx
+      - openssl
       - prometheus-node-exporter
     state: present
     update_cache: true
@@ -63,13 +64,19 @@
     group: "{{ patch_scanner_user }}"
     mode: "0755"
 
-- name: Make the report directory
+- name: Make the report directory (also the web root)
   ansible.builtin.file:
-    path: "{{ patch_scanner_dir }}/reports"
+    path: "{{ patch_scanner_reports_dir }}"
     state: directory
     owner: "{{ patch_scanner_user }}"
     group: "{{ patch_scanner_user }}"
     mode: "0755"
+
+- name: Keep reports written before this directory existed
+  ansible.builtin.command: cp -an {{ patch_scanner_dir }}/reports/. {{ patch_scanner_reports_dir }}/
+  args:
+    creates: "{{ patch_scanner_reports_dir }}/patch-report.md"
+  become_user: "{{ patch_scanner_user }}"
 
 - name: Let the scanner write the metrics file
   ansible.builtin.file:
@@ -107,6 +114,84 @@
     state: absent
   notify: Reload nginx
 
+# ---- patch control page ------------------------------------------------------------------
+- name: Make sure the folder for the generated password exists (on the machine running Ansible)
+  ansible.builtin.file:
+    path: "{{ patch_scanner_control_password_file | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+
+- name: Generate the login password once (kept outside the repository)
+  ansible.builtin.set_fact:
+    patch_scanner_control_password: "{{ lookup('ansible.builtin.password', patch_scanner_control_password_file, length=24, chars=['ascii_letters', 'digits']) }}"
+  no_log: true
+
+- name: Hash the password for nginx
+  ansible.builtin.command: openssl passwd -apr1 -salt {{ (patch_scanner_control_password | hash('sha256'))[:8] }} -stdin
+  args:
+    stdin: "{{ patch_scanner_control_password }}"
+  register: patch_scanner_control_hash
+  changed_when: false
+  no_log: true
+
+- name: Install the login file
+  ansible.builtin.copy:
+    content: "{{ patch_scanner_control_user }}:{{ patch_scanner_control_hash.stdout }}\n"
+    dest: /etc/nginx/patch-control.htpasswd
+    owner: root
+    group: www-data
+    mode: "0640"
+  no_log: true
+  notify: Reload nginx
+
+- name: Create a self-signed certificate (valid 10 years; browsers will warn once)
+  ansible.builtin.command: >-
+    openssl req -x509 -newkey rsa:3072 -nodes -days 3650
+    -subj "/CN={{ inventory_hostname }}" -addext "subjectAltName=IP:{{ ansible_host }}"
+    -keyout /etc/ssl/private/patch-control.key -out /etc/ssl/certs/patch-control.crt
+  args:
+    creates: /etc/ssl/certs/patch-control.crt
+  notify: Reload nginx
+
+- name: Put the control page in place
+  ansible.builtin.file:
+    path: "{{ patch_scanner_control_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Install the control page
+  ansible.builtin.copy:
+    src: patch_control.py
+    dest: "{{ patch_scanner_control_dir }}/patch_control.py"
+    mode: "0755"
+  notify: Restart patch control
+
+- name: Make the state folder (jobs and logs)
+  ansible.builtin.file:
+    path: "{{ patch_scanner_control_state }}"
+    state: directory
+    owner: "{{ patch_scanner_user }}"
+    group: "{{ patch_scanner_user }}"
+    mode: "0700"
+
+- name: Install the control page service
+  ansible.builtin.template:
+    src: patch-control.service.j2
+    dest: /etc/systemd/system/patch-control.service
+    mode: "0644"
+  notify: Restart patch control
+
+- name: Serve the control page over TLS
+  ansible.builtin.template:
+    src: nginx-patch-control.conf.j2
+    dest: /etc/nginx/conf.d/patch-control.conf
+    mode: "0644"
+  notify: Reload nginx
+
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
 
@@ -119,3 +204,4 @@
     - {name: nginx, state: started}
     - {name: prometheus-node-exporter, state: started}
     - {name: patch-scan.timer, state: started}
+    - {name: patch-control, state: started}

@@ -4,7 +4,7 @@ server {
     server_name _;
     allow {{ patch_scanner_web_allow }};
     deny all;
-    root {{ patch_scanner_dir }}/reports;
+    root {{ patch_scanner_reports_dir }};
     autoindex on;
     default_type text/plain;
     types {

@@ -45,4 +45,9 @@
         msg:
           - "TrueNAS is not configured by Ansible. Add this key to the 'patch' user's SSH key field:"
           - "{{ hostvars[groups['scanner'][0]].patch_scanner_pubkey }}"
-          - "Then start a first run on the scanner: sudo systemctl start patch-scan.service"
+          - "Then start a first run on the scanner: systemctl start --no-block patch-scan.service"
+          - >-
+            Patch control page: https://{{ hostvars[groups['scanner'][0]].ansible_host }}:{{ patch_scanner_control_tls_port | default(8443) }}/
+            (user {{ patch_scanner_control_user | default('patch') }}). The password is in
+            {{ patch_scanner_control_password_file | default('~/.cache/patch-management/patch-control-password') }}
+            on this machine.
