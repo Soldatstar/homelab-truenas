@@ -21,7 +21,9 @@
       {%- for c in patch_lxc_all
           if c.status == 'running'
           and (c.vmid | int) not in (patch_lxc_skip | map('int') | list)
-          and 'nopatch' not in c.get('tags', '').split(';') -%}
+          and 'nopatch' not in c.get('tags', '').split(';')
+          and ((patch_lxc_only | default([])) | length == 0
+               or (c.vmid | int) in ((patch_lxc_only | default([])) | map('int') | list)) -%}
       {%- set _ = out.append(c) -%}
       {%- endfor -%}
       {{ out }}
