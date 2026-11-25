@@ -20,6 +20,7 @@ llm_api_domain: llm.viktornote.ch
 
 llm_api_port: 8000 # inference API (OpenAI + Anthropic Messages)
 llm_webui_port: 3000 # Open WebUI
+llm_searxng_port: 8888 # SearXNG on the LAN, only with openwebui_searxng_publish
 
 # ---------------------------------------------------------------------------
 # Paths (the host has one 1.8T NVMe mounted at /, so everything lives there)
@@ -161,6 +162,17 @@ openwebui_extra_origins:
   - "http://{{ llm_lan_ip }}:{{ llm_webui_port }}"
 openwebui_postgres_enabled: false # SQLite is plenty for a household
 openwebui_searxng_enabled: true # web search, no VRAM
+# Publish SearXNG on llm_lan_ip:llm_searxng_port, for search tools on other machines (Claude
+# Code, see ../claude-code/mcp.json). It has no login and no rate limit. Who can connect is the
+# same source list as for every published port (llm_allowed_sources, see roles/llm_firewall).
+openwebui_searxng_publish: true
+# Engine changes on top of SearXNG's defaults (this also affects Open WebUI's web search).
+# Measured from this host on 2026-11-25: google cse and duckduckgo worked (duckduckgo not every
+# time: captcha and parser errors in the log), yahoo worked, bing returned unrelated results,
+# google and qwant answered "access denied", brave was suspended for too many requests and
+# wikidata for access denied.
+openwebui_searxng_engines_on: [yahoo]
+openwebui_searxng_engines_off: [brave, wikidata] # they only added "unavailable" warnings
 openwebui_rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2 # runs on CPU
 # Background tasks each take a sequence on the same model for a few seconds.
 openwebui_task_model: "{{ llm_cpu_served_name if (llm_cpu_model_enabled and llm_cpu_use_for_tasks) else llm_served_model_name }}"

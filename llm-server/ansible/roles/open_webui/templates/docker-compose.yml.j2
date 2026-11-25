@@ -48,6 +48,10 @@ services:
     image: "{{ searxng_image }}"
     container_name: searxng
     restart: unless-stopped
+{% if openwebui_searxng_publish | bool %}
+    ports:
+      - "{{ llm_lan_ip }}:{{ llm_searxng_port }}:8080"
+{% endif %}
     volumes:
       - "{{ llm_base_dir }}/open-webui/searxng/settings.yml:/etc/searxng/settings.yml:ro"
     networks:

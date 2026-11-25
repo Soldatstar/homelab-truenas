@@ -1,5 +1,6 @@
-# Managed by Ansible (open_webui). Internal only: reachable from the Docker
-# network by Open WebUI, never published on the host.
+# Managed by Ansible (open_webui). Used by Open WebUI over the Docker network. With
+# openwebui_searxng_publish it is also on the LAN, restricted by the DOCKER-USER firewall;
+# it has no login and no rate limit.
 use_default_settings: true
 server:
   secret_key: "{{ vault_searxng_secret }}"
@@ -12,3 +13,14 @@ search:
   formats:
     - html
     - json
+{% if (openwebui_searxng_engines_on + openwebui_searxng_engines_off) | length > 0 %}
+engines:
+{% for name in openwebui_searxng_engines_on %}
+  - name: {{ name }}
+    disabled: false
+{% endfor %}
+{% for name in openwebui_searxng_engines_off %}
+  - name: {{ name }}
+    disabled: true
+{% endfor %}
+{% endif %}

@@ -68,6 +68,19 @@
     pull: missing
     remove_orphans: true
 
+- name: Check that SearXNG answers on the LAN address
+  ansible.builtin.uri:
+    url: "http://{{ llm_lan_ip }}:{{ llm_searxng_port }}/healthz"
+    status_code: 200
+  register: open_webui_searxng_health
+  until: open_webui_searxng_health.status == 200
+  retries: 12
+  delay: 5
+  when:
+    - openwebui_searxng_enabled
+    - openwebui_searxng_publish | bool
+    - not ansible_check_mode
+
 - name: Bootstrap the admin account
   when: not ansible_check_mode
   block:
