@@ -9,7 +9,7 @@
 # LLM_BASE_URL at that proxy host and use vault_litellm_master_key.
 
 LLM_BASE_URL="${LLM_BASE_URL:-https://llm.viktornote.ch}" # no /v1: Claude Code appends /v1/messages
-LLM_MODEL="${LLM_MODEL:-qwen3.8-27b}"                     # llm_served_model_name ("claude-local" is an alias)
+LLM_MODEL="${LLM_MODEL:-flashnext-uncensored}"             # radiance; qwen3.8-27b with vllm-radiance
 
 if [ -z "${LLM_API_KEY:-}" ]; then
     printf 'LLM API key: '

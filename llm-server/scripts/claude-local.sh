@@ -4,9 +4,16 @@
 #   ./claude-local.sh                 start Claude Code in the current directory
 #   ./claude-local.sh -p "question"   any arguments are passed on to `claude`
 #
+# It uses its own Claude Code profile (CLAUDE_PROFILE_DIR), so your normal Claude Code login,
+# settings and history are not touched. From ../claude-code in this repository it gets the
+# settings, the two subagents (worker, scout) and the orchestrator rules (added to the main
+# session's system prompt only). Web search goes through an MCP server (mcp.json, needs
+# Node 22+) to SearXNG on the LLM host; set SEARXNG_URL to point it elsewhere.
+#
 # Settings (override from the environment if needed):
 #   LLM_BASE_URL   default https://llm.viktornote.ch   (no /v1 suffix)
-#   LLM_MODEL      default qwen3.8-27b
+#   LLM_MODEL      default flashnext-uncensored (radiance); qwen3.8-27b with vllm-radiance
+#   CLAUDE_PROFILE_DIR  default ~/.config/claude-local/profile
 #   LLM_API_KEY    the engine key (vault_llm_api_key); asked for if unset.
 #                  Put it in ~/.config/claude-local/key (chmod 600) to skip the prompt.
 #
@@ -15,8 +22,10 @@
 set -euo pipefail
 
 LLM_BASE_URL="${LLM_BASE_URL:-https://llm.viktornote.ch}"
-LLM_MODEL="${LLM_MODEL:-qwen3.8-27b}"
+LLM_MODEL="${LLM_MODEL:-flashnext-uncensored}"
 KEY_FILE="${HOME}/.config/claude-local/key"
+PROFILE_DIR="${CLAUDE_PROFILE_DIR:-${HOME}/.config/claude-local/profile}"
+SOURCE_DIR="$(cd "$(dirname "$(readlink -f "$0")")/../claude-code" && pwd)"
 
 command -v claude >/dev/null || { echo "claude is not installed or not on PATH" >&2; exit 1; }
 command -v curl >/dev/null || { echo "curl is required for the connection check" >&2; exit 1; }
@@ -47,19 +56,40 @@ export ANTHROPIC_BASE_URL="$LLM_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$LLM_API_KEY" # sent as "Authorization: Bearer"
 unset ANTHROPIC_API_KEY                     # would be sent as x-api-key, which the engine rejects
 
-# Every model slot uses the one local model.
+# A separate profile. The repository stays the source of truth: the agents are linked and
+# settings are passed with --settings, so Claude Code never rewrites the tracked file.
+mkdir -p "$PROFILE_DIR/agents"
+for f in "$SOURCE_DIR"/agents/*.md; do ln -sfn "$f" "$PROFILE_DIR/agents/$(basename "$f")"; done
+export CLAUDE_CONFIG_DIR="$PROFILE_DIR"
+
+# read_page (mcp.json) needs trafilatura. It gets its own virtualenv on this machine, built once
+# and rebuilt when tools/requirements.txt changes.
+command -v python3 >/dev/null || { echo "python3 is required" >&2; exit 1; }
+REQ="$SOURCE_DIR/tools/requirements.txt"
+VENV="${XDG_CACHE_HOME:-$HOME/.cache}/claude-local/venv-$(sha256sum "$REQ" | cut -c1-12)"
+if [ ! -f "$VENV/.ready" ]; then
+    echo "Installing the page reader ($(tr '\n' ' ' < "$REQ")) into $VENV"
+    rm -rf "$VENV"
+    python3 -m venv "$VENV" || { echo "could not create a virtualenv (Debian/Ubuntu: apt install python3-venv)" >&2; exit 1; }
+    "$VENV/bin/pip" install --quiet --disable-pip-version-check -r "$REQ"
+    touch "$VENV/.ready"
+fi
+export CLAUDE_LOCAL_PYTHON="$VENV/bin/python"
+export CLAUDE_LOCAL_TOOLS="$SOURCE_DIR/tools"
+
+# Every model slot uses the one local model, subagents included.
 export ANTHROPIC_MODEL="$LLM_MODEL"
-export ANTHROPIC_SMALL_FAST_MODEL="$LLM_MODEL"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="$LLM_MODEL"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="$LLM_MODEL"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LLM_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LLM_MODEL" # also used for background requests
+export ANTHROPIC_DEFAULT_FABLE_MODEL="$LLM_MODEL"
 export CLAUDE_CODE_SUBAGENT_MODEL="$LLM_MODEL"
+export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 
 # The model's template accepts reasoning effort low, medium or xhigh, not "high".
 export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-medium}"
 
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-export API_TIMEOUT_MS=1800000 # a cold long prefill can take minutes
-
-echo "Claude Code -> ${LLM_BASE_URL} (${LLM_MODEL})"
-exec claude "$@"
+echo "Claude Code -> ${LLM_BASE_URL} (${LLM_MODEL}), profile ${PROFILE_DIR}"
+# --mcp-config takes several values, so an option must follow it before any user arguments.
+exec claude --mcp-config "$SOURCE_DIR/mcp.json" --settings "$SOURCE_DIR/settings.json" \
+    --append-system-prompt "$(cat "$SOURCE_DIR/orchestrator.md")" "$@"
