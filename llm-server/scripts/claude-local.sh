@@ -3,6 +3,9 @@
 #
 #   ./claude-local.sh                 start Claude Code in the current directory
 #   ./claude-local.sh -p "question"   any arguments are passed on to `claude`
+#   ./claude-local.sh --auto          allow auto mode (must be the first argument). Starts in
+#                                     plan mode; approve the plan with "use auto mode". Without
+#                                     --auto, auto mode is disabled. See ../README.md.
 #
 # It uses its own Claude Code profile (CLAUDE_PROFILE_DIR), so your normal Claude Code login,
 # settings and history are not touched. From ../claude-code in this repository it gets the
@@ -20,6 +23,12 @@
 # The variables are set for this run only; your shell and other Claude Code
 # sessions keep talking to the normal Anthropic service.
 set -euo pipefail
+
+AUTO=0
+if [ "${1:-}" = "--auto" ]; then
+    AUTO=1
+    shift
+fi
 
 LLM_BASE_URL="${LLM_BASE_URL:-https://llm.viktornote.ch}"
 LLM_MODEL="${LLM_MODEL:-flashnext-uncensored}"
@@ -90,6 +99,30 @@ export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-medium}"
 
 echo "Claude Code -> ${LLM_BASE_URL} (${LLM_MODEL}), profile ${PROFILE_DIR}"
+SETTINGS="$SOURCE_DIR/settings.json"
+MODE_ARGS=()
+if [ "$AUTO" = 1 ]; then
+    # --settings takes one file, so build it: the normal settings without the auto-mode lock,
+    # plus the extra ask and deny rules from settings.auto.json.
+    SETTINGS="$PROFILE_DIR/settings.auto.generated.json"
+    "$CLAUDE_LOCAL_PYTHON" - "$SOURCE_DIR/settings.json" "$SOURCE_DIR/settings.auto.json" "$SETTINGS" <<'PY'
+import json, sys
+base, extra = (json.load(open(p)) for p in sys.argv[1:3])
+perms = base["permissions"]
+del perms["disableAutoMode"]
+for key, rules in extra["permissions"].items():
+    perms[key] = perms.get(key, []) + rules
+json.dump(base, open(sys.argv[3], "w"), indent=2)
+PY
+    # Plan first, unless a mode was asked for on the command line.
+    case " $* " in
+        *" --permission-mode"*) ;;
+        *) MODE_ARGS=(--permission-mode plan) ;;
+    esac
+    echo "Auto mode allowed. The safety check runs on ${LLM_MODEL} itself; use a git branch."
+fi
+
 # --mcp-config takes several values, so an option must follow it before any user arguments.
-exec claude --mcp-config "$SOURCE_DIR/mcp.json" --settings "$SOURCE_DIR/settings.json" \
-    --append-system-prompt "$(cat "$SOURCE_DIR/orchestrator.md")" "$@"
+exec claude --mcp-config "$SOURCE_DIR/mcp.json" --settings "$SETTINGS" \
+    --append-system-prompt "$(cat "$SOURCE_DIR/orchestrator.md")" \
+    ${MODE_ARGS[@]+"${MODE_ARGS[@]}"} "$@"

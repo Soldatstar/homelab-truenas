@@ -253,11 +253,38 @@ take effect with the deploy command above. `scout` cannot open pages: it sees sn
 The pinned MCP version is in `claude-code/mcp.json` (see `VERSIONS.md`). Its own dependencies are
 resolved by npm at install time and are not locked.
 
-**Auto mode is disabled** in this profile (`disableAutoMode`, default mode `default`). In auto mode
+**Auto mode is disabled** in this profile unless you start it with `--auto` (below) (`disableAutoMode`, default mode `default`). In auto mode
 the safety check before an action is another request to the same local model. In the first real
 two-scout run (2026-11-25), side requests matching that pattern (no tools, about 32k tokens of
 prompt, mostly reasoning, some cut off at their token limit) took 154 s of engine time against
 39 s for the agents' own requests, and starting the second subagent took 35 s.
+
+**Autonomous work (`claude-local --auto`).** For "requirements, plan together, then let it work":
+
+1. Put the task in `REQUIREMENTS.md` in the project, with a command that shows it is done. Keep
+   `CLAUDE.md` for lasting project rules; it is sent with every request, subagents' included.
+2. Work on a new git branch. Run `claude-local --auto`; it starts in plan mode.
+3. "Read REQUIREMENTS.md and plan it with me." When the plan is right, approve it with the
+   "use auto mode" choice.
+
+`--auto` removes the auto-mode lock and adds a prompt before `git push` and a ban on `sudo` and
+`su` (`claude-code/settings.auto.json`). Such rules match command text and are not a security
+boundary. Reading files and editing inside the working directory skip the safety check; shell
+commands and subagent starts go through it. It fails closed: with a stand-in server, an empty or
+unreadable verdict meant the command did not run (one unreadable verdict led to 10 check
+requests). According to the docs, auto mode pauses after 3 blocks in a row or 20 in total, so an
+unattended run can stop and wait. They list only Claude models as supported.
+
+The judge is the same abliterated model that does the work. Treat the check as a guard against
+accidents, not against a hostile web page or repository. For long unattended runs use a machine,
+VM or WSL distro without personal keys or other secrets.
+
+**Why the check is slow here.** It sends no thinking or effort field, caps the answer at 2,112
+tokens (10,240 in its second stage) and requires it to start with `<block>`. The engine has no
+default effort of its own, so the template's `xhigh` applies and the model reasons first.
+`scripts/probe_reasoning.py` shows what each request shape produces. If sending nothing reasons
+heavily, a server default is the candidate fix: `reasoning-effort: medium` (or `none`) in
+`radiance_engine_extra_config`. It changes every client that sends no effort. Not yet measured.
 
 The model is abliterated (refusals removed) and here it runs tools on your machine. Keep the
 normal permission prompts; do not use bypass mode, and be careful with content from the web.
