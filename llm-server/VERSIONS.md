@@ -13,6 +13,8 @@ Recorded 2026-11-10. Every decision in this folder traces back to one of these.
 | llama.cpp CPU server | `ghcr.io/ggml-org/llama.cpp:server` on 2026-11-10 | `sha256:4d2de15a0ffb...` |
 | Open WebUI | v0.13.3 | `sha256:46b59158e655...` |
 | SearXNG | `latest` on 2026-11-10 | `sha256:287af61f1a13...` |
+| mcp-searxng (Claude Code web search, runs on the client) | npm `2.10.1`, published 2026-11-11 (14 days old when pinned; no install scripts, npm provenance). Change it in `claude-code/mcp.json` | version pin only, dependencies not locked |
+| trafilatura (Claude Code page reader, runs on the client) | PyPI `2.3.1`, published 2026-10-06. Pinned in `claude-code/tools/requirements.txt`; `claude-local.sh` rebuilds its virtualenv when the file changes | version pin only, dependencies not locked |
 | Postgres (optional) | 17 | `sha256:ff87138949ad...` |
 | LiteLLM (optional) | `main-stable` on 2026-11-10 (release v1.108.4) | `sha256:c560d3171368...` |
 | node-exporter (optional) | v1.12.1 | `sha256:1b4e4438faca...` |

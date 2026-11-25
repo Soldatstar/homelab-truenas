@@ -32,7 +32,7 @@ flowchart LR
         subgraph net["Docker network: llm"]
             webui["open-webui :8080"]
             vllm["vllm-radiance :8000<br/>alias llm-backend"]
-            searx["searxng (internal)"]
+            searx["searxng :8080<br/>LAN :8888, no login"]
         end
         gpu0[(R9700 #0)]
         gpu1[(R9700 #1)]
@@ -42,6 +42,7 @@ flowchart LR
     npm -->|:8000 + API key| fw
     fw --> webui
     fw --> vllm
+    fw -->|":8888, search from Claude Code"| searx
     webui -->|"http://llm-backend:8000/v1 + API key"| vllm
     webui --> searx
     vllm --- gpu0
@@ -63,6 +64,7 @@ llm-server/
                                 litellm*, radiance_engine*, llamacpp_fallback*
   scripts/                      smoke_test.py (run by smoke-test.yml), bench.py, claude-local.sh,
                                 claude-code-env.{ps1,sh}, resolve-digest.sh
+  claude-code/                  Claude Code profile: settings, worker and scout subagents, orchestrator rules
   docs/                         bios-kernel-checklist, reverse-proxy, kernel-update, troubleshooting
   HANDOVER.md                   how to pick this up: setup, secrets, daily commands, gotchas
   NEXT-STEPS.md                 current state and open items
@@ -161,25 +163,109 @@ reports cold and warm time to first token plus the cache-hit counter.
 
 ## Claude Code
 
-The pinned image is based on vLLM 0.30, which serves the Anthropic Messages API at
-`/v1/messages` natively. The fork's own docs do not mention it, so the smoke test performs a
-real tool round trip through it (tool call, tool result, final answer).
+`scripts/claude-local.sh` runs Claude Code against this server, set up for **one orchestrator and
+two subagents**:
 
-```powershell
-. .\llm-server\scripts\claude-code-env.ps1     # Windows
-claude
-```
 ```bash
-. llm-server/scripts/claude-code-env.sh        # Linux, macOS, WSL
-claude
+install -m 700 -d ~/.config/claude-local
+read -rsp "vault_llm_api_key: " K && (umask 077; printf '%s' "$K" > ~/.config/claude-local/key); unset K
+llm-server/scripts/claude-local.sh          # in the project you want to work on
 ```
 
-The scripts map every model slot (`ANTHROPIC_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL`,
-`ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) to the local
-model, set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, and prompt for the API key instead
-of storing it.
+It uses its own profile (`~/.config/claude-local/profile`), so your normal Claude Code login,
+settings and history stay as they are. Files in `claude-code/`:
 
-If the `/v1/messages` check fails, set `litellm_enabled: true`, re-run `site.yml`, forward
+| File | What it does |
+|---|---|
+| `settings.json` | context window 262,144 (Claude Code would otherwise assume 1M), auto-compact at 220,000, output up to 32,000, at most 2 subagents at once and no nesting, built-in Explore and Plan off, extra background requests off, no attribution header (it would defeat the prefix cache), long timeouts |
+| `agents/worker.md` | implements one task; all tools |
+| `agents/scout.md` | read-only investigation (Read, Grep, Glob) |
+| `orchestrator.md` | delegation rules, added to the main session's system prompt only |
+| `mcp.json` | two MCP servers: web search (`mcp-searxng`, pinned, pointed at SearXNG on this host) and the page reader |
+| `tools/read_page.py` | page reader: fetches a public page and returns its main text, extracted with [trafilatura](https://github.com/adbar/trafilatura) (`tools/requirements.txt`) |
+
+**Capacity.** The `native` profile's KV pool is 976,180 tokens, 3.7 sessions of 262,144. Three
+full windows (orchestrator and two subagents) fit, with about 190,000 tokens left. The fourth
+sequence serves Open WebUI and the like. A long Open WebUI chat while all three agents are full
+can still force the engine to preempt. No server change is needed. Throughput with three agents
+decoding at once has not been measured: `bench.py --concurrency 3` does that.
+
+**Checked** with Claude Code 2.1.332 against a stand-in server on 2026-11-25: every request,
+subagents included, uses `flashnext-uncensored`; two subagents run and a third is refused;
+`worker` and `scout` are offered; a project's `CLAUDE.md` reaches all three. Claude Code sends
+`thinking: {"type": "adaptive"}` and `output_config: {"effort": "medium"}` to `/v1/messages`.
+**Not checked:** whether radiance 2.1.0 accepts and honors these. If answers think far longer than
+medium effort should, set `reasoning-effort: medium` in `radiance_engine_extra_config`.
+
+**Web access.** Claude Code's own `WebSearch` is denied in this profile. It runs by asking the
+model endpoint to execute Anthropic's server-side `web_search` tool. radiance is not known to do
+that, and in a test with a stand-in server, a plain text answer came back to the agent labelled as
+search results. Search instead goes through [mcp-searxng](https://github.com/ihor-sokoliuk/mcp-searxng)
+(`claude-code/mcp.json`, started with `npx`, needs Node 22+) to the SearXNG that Open WebUI uses.
+The orchestrator, `worker` and `scout` get `searxng_web_search`. The package's other tools are
+denied, `web_url_read` because it would fetch any URL, LAN addresses included.
+
+**Reading pages** goes through `read_page` (`tools/read_page.py`) instead of `WebFetch`, which is
+denied. It returns the text trafilatura extracts, with no extra model call to summarize it. It
+fetches only public http/https pages on ports 80 and 443: every resolved address must be public,
+redirects included, and URLs are limited to 400 characters. It cannot read PDFs or pages that
+need JavaScript, and some sites block automated readers. Tables with merged cells can lose
+values, so check important numbers.
+
+**Permissions.** `searxng_web_search` and `read_page` run without asking (`permissions.allow`).
+The risk this accepts: the agents can also read files, so a malicious page or search result could
+get one to put file contents into a query or a URL, and no prompt would show it. As a limit, the
+Read tool is denied `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/claude-local` (the API key),
+`~/.claude` and `.env` files under the project. That list is not complete, and it does not bind
+shell commands, which still prompt. Do not run this in a directory that holds other secrets.
+
+**Another machine (laptop).** `claude-local` runs everything client-side on the machine you start
+it on. It needs: this repository, Claude Code, Node 22+ (search), `python3` with `venv`
+(Debian/Ubuntu: `apt install python3-venv`), and the key in `~/.config/claude-local/key`. On
+first start it installs trafilatura into its own virtualenv under `~/.cache/claude-local/`;
+nothing to install by hand. It must reach `llm.viktornote.ch` and `192.168.1.41:8888`, which are
+LAN only, so use the home network or a VPN into it. On Windows, run it in WSL.
+
+SearXNG is published on `192.168.1.41:8888` (`openwebui_searxng_publish`, `llm_searxng_port`). It
+has **no login and no rate limit**; the DOCKER-USER firewall decides who can connect
+(`llm_allowed_sources`, the same list as for ports 3000 and 8000; by default the whole LAN,
+`192.168.1.0/24`). Narrowing that list to the proxy only also cuts off search. Queries still go on
+to public search engines. To deploy **while radiance is running**, re-run only the Open WebUI role
+through `flash-next.yml`, with the model you have loaded:
+
+```bash
+cd llm-server/ansible
+ansible-playbook playbooks/flash-next.yml --tags webui \
+  -e radiance_model=uncensored_v4 -e radiance_profile=native --ask-become-pass --ask-vault-pass
+curl -s 'http://192.168.1.41:8888/search?q=test&format=json' | head -c 300   # from your PC
+```
+
+Do not use `site.yml --tags webui` for this: it would point Open WebUI back at the 27B model.
+Without `-e radiance_model=...` the role is skipped. The engine is not touched.
+
+**Search quality.** `mcp.json` caps a search at 8 results of 500 characters, and `scout` is told to
+ask for `result_detail: "compact"` and to stop after 6 searches. On one query, compact output was
+2,537 characters against 4,031, without thumbnail links, scores or engine names. The caps are
+enforced by the package; compact mode and the search budget are only instructions to the model.
+The engine lists are `openwebui_searxng_engines_on` and `_off`. They apply to Open WebUI too, and
+take effect with the deploy command above. `scout` cannot open pages: it sees snippets only.
+
+The pinned MCP version is in `claude-code/mcp.json` (see `VERSIONS.md`). Its own dependencies are
+resolved by npm at install time and are not locked.
+
+**Auto mode is disabled** in this profile (`disableAutoMode`, default mode `default`). In auto mode
+the safety check before an action is another request to the same local model. In the first real
+two-scout run (2026-11-25), side requests matching that pattern (no tools, about 32k tokens of
+prompt, mostly reasoning, some cut off at their token limit) took 154 s of engine time against
+39 s for the agents' own requests, and starting the second subagent took 35 s.
+
+The model is abliterated (refusals removed) and here it runs tools on your machine. Keep the
+normal permission prompts; do not use bypass mode, and be careful with content from the web.
+
+`claude-code-env.{sh,ps1}` only set the endpoint and model variables in the current shell. They
+do not set up the profile, the limits or the subagents.
+
+If the `/v1/messages` requests fail, set `litellm_enabled: true`, re-run `site.yml`, forward
 `llm.viktornote.ch` to port 4000 instead of 8000, and use `vault_litellm_master_key` as the key.
 
 ## Open WebUI
